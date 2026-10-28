@@ -20,7 +20,7 @@
 ### 2. 貼上雲端程式
 1. 試算表選單：**擴充功能 → Apps Script**
 2. 刪掉裡面原本的內容，貼上 [backend/Code.gs](backend/Code.gs) 的全部內容
-3. 把第 13 行的 `change-me-to-a-secret` 改成你們自己的**通關密語**（英數字，越長越好，例如 `ht-zc-2026-ledger-xyz`）
+3. 把第 14 行的 `change-me-to-a-secret` 改成你們自己的**通關密語**（英數字，越長越好，例如 `ht-zc-2026-ledger-xyz`）
 4. 按 💾 儲存
 5. 上方函式選單選 `setup`，按 **執行**
    - 跳出授權：選你的 Google 帳號 →「進階」→「前往（不安全）」→「允許」
