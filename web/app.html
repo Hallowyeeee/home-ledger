@@ -1,0 +1,579 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>家庭記帳</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  #app { max-width: 1240px; margin: 0 auto; padding: 18px 24px 60px; }
+  header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  header h1 { margin: 0; font-size: 22px; }
+  .tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+  .tabs button { border: 0; background: transparent; padding: 8px 14px; border-radius: 8px; color: var(--muted); }
+  .tabs button.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .month { display: flex; align-items: center; gap: 4px; }
+  .month b { min-width: 110px; text-align: center; font-size: 17px; }
+  .month button { border: 1px solid var(--line); background: var(--card); border-radius: 8px; width: 32px; height: 32px; }
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 12px; }
+  .kpi .v { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .kpi .v.in { color: var(--income); }
+  .grid2 { display: grid; grid-template-columns: 1.3fr 1fr; gap: 12px; }
+  @media (max-width: 960px) { .kpis { grid-template-columns: repeat(2, 1fr); } .grid2 { grid-template-columns: 1fr; } }
+  .card h2 { margin: 0 0 12px; font-size: 17px; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .legend { font-size: 13px; color: var(--muted); font-weight: 400; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin: 0 4px 0 10px; vertical-align: -1px; }
+  .trend { width: 100%; height: 240px; display: block; }
+  .trend text { fill: var(--muted); font-size: 11px; }
+  .bar-row { display: grid; grid-template-columns: 120px 1fr 170px; gap: 10px; align-items: center; margin: 10px 0; font-size: 14px; }
+  .bar { height: 10px; background: var(--line); border-radius: 99px; overflow: hidden; }
+  .bar i { display: block; height: 100%; background: var(--accent); border-radius: 99px; }
+  .bar i.over { background: var(--warn); }
+  .bar-row .n { text-align: right; font-variant-numeric: tabular-nums; }
+  .note-line { font-size: 13px; color: var(--muted); margin-top: 10px; }
+  .tag { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 99px; background: var(--accent-soft); color: var(--accent); }
+  .tag.warn { background: #fde7da; color: var(--warn); }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 6px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 500; position: sticky; top: 0; background: var(--card); }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td input, td select { padding: 4px 6px; border-color: transparent; background: transparent; width: 100%; }
+  td input:hover, td select:hover, td input:focus, td select:focus { border-color: var(--line); background: var(--card); }
+  td input.amt { text-align: right; }
+  td .x { border: 0; background: transparent; color: var(--muted); }
+  tr.income td input.amt { color: var(--income); }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+  .scroll { max-height: calc(100vh - 260px); overflow: auto; }
+  .drop { border: 2px dashed var(--line); border-radius: 14px; padding: 28px; text-align: center; color: var(--muted); }
+  .drop.over { border-color: var(--accent); background: var(--accent-soft); }
+  .pct-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+  .pct-grid label { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; }
+  .pct-grid input { width: 70px; text-align: right; }
+  .cat-list { list-style: none; padding: 0; margin: 0; }
+  .cat-list li { display: flex; gap: 6px; align-items: center; padding: 5px 0; }
+  .cat-list input { flex: 1; }
+  .cat-list button { border: 1px solid var(--line); background: var(--card); border-radius: 8px; width: 32px; height: 32px; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr 1.4fr; gap: 12px; align-items: start; }
+  @media (max-width: 960px) { .cols { grid-template-columns: 1fr; } }
+  .add-row { display: grid; grid-template-columns: 90px 130px 1fr 120px 100px 110px auto; gap: 6px; margin-bottom: 12px; }
+</style>
+</head>
+<body>
+<div id="setup" class="hidden"></div>
+
+<div id="app" class="hidden">
+  <header>
+    <h1>家庭記帳</h1>
+    <div class="tabs" id="tabs">
+      <button data-tab="overview" class="on">總覽</button>
+      <button data-tab="records">明細</button>
+      <button data-tab="invoice">匯入發票</button>
+      <button data-tab="budget">預算</button>
+      <button data-tab="cats">分類與規則</button>
+    </div>
+    <div class="month"><button id="mPrev" aria-label="上個月">‹</button><b id="mLabel"></b><button id="mNext" aria-label="下個月">›</button></div>
+    <div class="toolbar" style="margin:0"><span class="status" id="status"></span><button class="btn ghost small" id="syncBtn">同步</button><button class="btn ghost small" id="shareBtn">設定碼</button></div>
+  </header>
+
+  <!-- 總覽 -->
+  <section data-pane="overview">
+    <div class="kpis">
+      <div class="card kpi"><div class="muted">本月支出</div><div class="v" id="kOut">–</div><div class="muted" id="kOutVs"></div></div>
+      <div class="card kpi"><div class="muted">本月收入 <span id="kInTag"></span></div><div class="v in" id="kIn">–</div><div class="muted" id="kInNote"></div></div>
+      <div class="card kpi"><div class="muted">結餘</div><div class="v" id="kNet">–</div><div class="muted" id="kSave"></div></div>
+      <div class="card kpi"><div class="muted">誰花的</div><div id="kWho" style="font-size:17px;font-weight:600;line-height:1.7"></div></div>
+    </div>
+    <div class="grid2">
+      <div class="card"><h2>近 12 個月收支<span class="legend"><i style="background:var(--income)"></i>收入<i style="background:var(--accent)"></i>支出</span></h2><svg class="trend" id="trend"></svg></div>
+      <div class="card"><h2>本月分類與預算<span class="legend" id="budgetBase"></span></h2><div id="catBars"></div></div>
+    </div>
+  </section>
+
+  <!-- 明細 -->
+  <section data-pane="records" class="hidden">
+    <div class="card">
+      <div class="add-row" id="addRow">
+        <select id="aType"><option value="expense">支出</option><option value="income">收入</option></select>
+        <input id="aDate" type="date">
+        <input id="aNote" placeholder="店名或備註（會自動分類）">
+        <select id="aCat"></select>
+        <select id="aWho"></select>
+        <input id="aAmt" type="text" inputmode="decimal" placeholder="金額">
+        <button class="btn small" id="aGo">記一筆</button>
+      </div>
+      <div class="toolbar">
+        <input id="fText" placeholder="搜尋備註、店名">
+        <select id="fType"><option value="">支出＋收入</option><option value="expense">只看支出</option><option value="income">只看收入</option></select>
+        <select id="fCat"></select>
+        <select id="fWho"></select>
+        <label class="muted"><input type="checkbox" id="fAll"> 顯示所有月份</label>
+        <span class="muted" id="fSum" style="margin-left:auto"></span>
+        <button class="btn ghost small" id="openSheet">在 Google 試算表開啟</button>
+      </div>
+      <div class="scroll">
+        <table><thead><tr><th style="width:130px">日期</th><th style="width:120px">分類</th><th>備註</th><th style="width:90px">誰</th><th class="num" style="width:120px">金額</th><th style="width:36px"></th></tr></thead>
+        <tbody id="recBody"></tbody></table>
+      </div>
+    </div>
+  </section>
+
+  <!-- 匯入發票 -->
+  <section data-pane="invoice" class="hidden">
+    <div class="card">
+      <h2>匯入手機條碼發票</h2>
+      <ol class="muted" style="margin-top:0;padding-left:20px">
+        <li>按「打開財政部平台」，登入手機條碼（要自己輸入圖形驗證碼）</li>
+        <li>到「消費資料查詢」，選月份後按「匯出」下載檔案</li>
+        <li>把下載的檔案拖進下面的框框</li>
+      </ol>
+      <div class="toolbar">
+        <button class="btn" id="openEinv">打開財政部平台</button>
+        <span class="muted">這批發票是誰的：</span><select id="iWho"></select>
+      </div>
+      <div class="drop" id="drop">把發票檔案拖到這裡，或 <label style="color:var(--accent);cursor:pointer;text-decoration:underline">選擇檔案<input type="file" id="iFile" accept=".csv,.txt,text/csv,text/plain" hidden></label></div>
+      <div id="iMapWrap" class="toolbar hidden" style="margin-top:12px">
+        <span class="muted">看不懂這個檔案的格式，請指定欄位：</span>
+        日期<select id="iColDate"></select> 金額<select id="iColAmt"></select> 店名<select id="iColNote"></select>
+      </div>
+      <div id="iPreview" class="hidden" style="margin-top:14px">
+        <div class="toolbar"><b id="iInfo"></b><span class="muted" id="iInfo2"></span><button class="btn" id="iGo" style="margin-left:auto">匯入勾選的發票</button></div>
+        <div class="scroll"><table><thead><tr><th style="width:36px"></th><th style="width:110px">日期</th><th>店名／品項</th><th class="num" style="width:100px">金額</th><th style="width:130px">分類</th><th style="width:150px">備註</th></tr></thead><tbody id="iBody"></tbody></table></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 預算 -->
+  <section data-pane="budget" class="hidden">
+    <div class="card">
+      <h2>每月預算：佔當月收入的百分比</h2>
+      <p class="muted" style="margin-top:0">預算 = 當月實際收入 × 百分比。月初收入還沒進來時，先用上個月收入估算。沒分配出去的就是目標儲蓄。</p>
+      <div class="pct-grid" id="pctGrid"></div>
+      <p id="pctSum" style="font-weight:600"></p>
+      <p><button class="btn" id="pctSave">儲存預算</button></p>
+    </div>
+  </section>
+
+  <!-- 分類與規則 -->
+  <section data-pane="cats" class="hidden">
+    <div class="cols">
+      <div class="card"><h2>支出分類</h2><ul class="cat-list" id="catExpense"></ul><p><button class="btn ghost small" data-add="expense">＋ 新增分類</button></p></div>
+      <div class="card"><h2>收入分類</h2><ul class="cat-list" id="catIncome"></ul><p><button class="btn ghost small" data-add="income">＋ 新增分類</button></p></div>
+      <div class="card">
+        <h2>自動分類規則<span class="legend" id="ruleCount"></span></h2>
+        <p class="muted" style="margin-top:0">備註或店名裡有「關鍵字」，就自動歸到那個分類。手機上手動選過的店名也會自動加進來。</p>
+        <div class="toolbar"><input id="rKw" placeholder="關鍵字，例如 大潤發" style="flex:1"><select id="rCat"></select><button class="btn small" id="rAdd">新增</button></div>
+        <input id="rFind" placeholder="搜尋規則" style="width:100%;margin-bottom:8px">
+        <div class="scroll" style="max-height:420px"><table><tbody id="ruleBody"></tbody></table></div>
+      </div>
+    </div>
+    <p><button class="btn" id="catSave">儲存分類與規則</button> <span class="muted">改分類名稱時，舊紀錄會一起改過去。</span></p>
+  </section>
+</div>
+
+<dialog id="shareDlg" style="border:1px solid var(--line);border-radius:14px;background:var(--card);color:var(--ink);max-width:560px">
+  <h3 style="margin-top:0">給其他裝置用</h3>
+  <p class="muted">手機：把這個連結傳到手機（LINE 給自己或子淳），用 Safari 打開一次，再「加入主畫面」。</p>
+  <textarea id="shareLink" readonly style="width:100%;min-height:70px;font-size:12px"></textarea>
+  <p class="muted">新電腦：打開 .exe 後，貼上這組設定碼。</p>
+  <textarea id="shareCode" readonly style="width:100%;min-height:50px;font-size:12px"></textarea>
+  <p class="muted" style="color:var(--warn)">有這組設定碼的人就能看到帳本，只傳給自己人。</p>
+  <p style="text-align:right;margin-bottom:0"><button class="btn" onclick="this.closest('dialog').close()">關閉</button></p>
+</dialog>
+<script src="core.js"></script>
+<script>
+let month = ym(todayStr());
+const T = window.__TAURI__;
+function openExternal(url) {
+  if (T?.opener?.openUrl) T.opener.openUrl(url); else window.open(url, '_blank');
+}
+
+// ---------- 計算 ----------
+const sum = list => list.reduce((s, r) => s + Number(r.amount), 0);
+const inMonth = (m, type) => Ledger.list(r => ym(r.date) === m && (!type || r.type === type));
+function monthIncome(m) {
+  // 當月收入還沒記 → 用上個月估算
+  const actual = sum(inMonth(m, 'income'));
+  if (actual > 0) return { income: actual, estimated: false };
+  return { income: sum(inMonth(shiftMonth(m, -1), 'income')), estimated: true };
+}
+
+// ---------- 總覽 ----------
+function renderOverview() {
+  const out = sum(inMonth(month, 'expense'));
+  const lastOut = sum(inMonth(shiftMonth(month, -1), 'expense'));
+  const actualIn = sum(inMonth(month, 'income'));
+  const { income: base, estimated } = monthIncome(month);
+
+  $('#kOut').textContent = money(out);
+  $('#kOutVs').innerHTML = lastOut ? `比上月${out > lastOut ? '<b style="color:var(--warn)">多</b>' : '<b style="color:var(--ok)">少</b>'} ${money(Math.abs(out - lastOut))}` : '上月沒有資料';
+  $('#kIn').textContent = money(actualIn);
+  $('#kInTag').innerHTML = estimated && base ? '<span class="tag warn">預算估算中</span>' : '';
+  $('#kInNote').textContent = estimated ? (base ? `還沒記收入，預算先用上月 ${money(base)} 估算` : '還沒記收入') : '';
+  $('#kNet').textContent = money(actualIn - out);
+  $('#kNet').style.color = actualIn - out < 0 ? 'var(--warn)' : '';
+  const target = 100 - Ledger.cats('expense').reduce((s, c) => s + (Number(c.pct) || 0), 0);
+  const real = actualIn ? Math.round((actualIn - out) / actualIn * 100) : null;
+  $('#kSave').textContent = `目標存 ${target}%` + (real == null ? '' : `，實際存 ${real}%`);
+  $('#kWho').innerHTML = PEOPLE.map(p => `${p} <span style="font-variant-numeric:tabular-nums">${money(sum(inMonth(month, 'expense').filter(r => r.who === p)))}</span>`).join('<br>');
+
+  // 分類與預算
+  const recs = inMonth(month, 'expense');
+  const cats = Ledger.cats('expense');
+  const names = [...new Set([...cats.map(c => c.name), ...recs.map(r => r.category)])];
+  $('#budgetBase').textContent = base ? `以收入 ${money(base)}${estimated ? '（估算）' : ''} 計算` : '還沒有收入資料，無法算預算';
+  $('#catBars').innerHTML = names.map(n => {
+    const spent = sum(recs.filter(r => r.category === n));
+    const pct = Number(cats.find(c => c.name === n)?.pct) || 0;
+    const budget = base * pct / 100;
+    const share = out ? Math.round(spent / out * 100) : 0;
+    const w = budget ? Math.min(100, spent / budget * 100) : (out ? spent / out * 100 : 0);
+    return `<div class="bar-row"><span>${esc(n)} <span class="muted">${share}%</span></span>
+      <div class="bar"><i class="${budget && spent > budget ? 'over' : ''}" style="width:${w}%"></i></div>
+      <span class="n">${money(spent)}${budget ? ` <span class="muted">/ ${money(budget)}</span>` : ''}</span></div>`;
+  }).join('') + (out ? '' : '<p class="muted">這個月還沒有支出紀錄</p>');
+
+  renderTrend();
+}
+
+function renderTrend() {
+  const svg = $('#trend'), W = svg.clientWidth || 640, H = 240, padB = 26, padT = 18;
+  const months = Array.from({ length: 12 }, (_, i) => shiftMonth(month, i - 11));
+  const ins = months.map(m => sum(inMonth(m, 'income'))), outs = months.map(m => sum(inMonth(m, 'expense')));
+  const max = Math.max(1, ...ins, ...outs);
+  const slot = W / 12, bw = Math.min(16, slot * 0.3), h = v => v / max * (H - padB - padT);
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.innerHTML = months.map((m, i) => {
+    const cx = slot * i + slot / 2, cur = m === month;
+    return `<g opacity="${cur ? 1 : .55}">
+      <rect x="${cx - bw - 1}" y="${H - padB - h(ins[i])}" width="${bw}" height="${h(ins[i])}" rx="3" fill="var(--income)"><title>${m} 收入 ${money(ins[i])}</title></rect>
+      <rect x="${cx + 1}" y="${H - padB - h(outs[i])}" width="${bw}" height="${h(outs[i])}" rx="3" fill="var(--accent)"><title>${m} 支出 ${money(outs[i])}</title></rect></g>
+      <text x="${cx}" y="${H - 8}" text-anchor="middle" style="${cur ? 'font-weight:700;fill:var(--ink)' : ''}">${Number(m.slice(5))}月</text>`;
+  }).join('');
+}
+
+// ---------- 明細 ----------
+function catOptions(type, selected, withAll) {
+  const list = type ? Ledger.cats(type).map(c => c.name) : [...new Set(Ledger.categories.map(c => c.name))];
+  if (selected && !list.includes(selected)) list.push(selected);
+  return (withAll ? `<option value="">全部分類</option>` : '') + list.map(n => `<option ${n === selected ? 'selected' : ''}>${esc(n)}</option>`).join('');
+}
+const whoOptions = (sel, withAll) => (withAll ? '<option value="">兩個人</option>' : '') + PEOPLE.map(p => `<option ${p === sel ? 'selected' : ''}>${p}</option>`).join('');
+
+function renderRecords() {
+  const q = $('#fText').value.trim().toLowerCase(), t = $('#fType').value, c = $('#fCat').value, w = $('#fWho').value, all = $('#fAll').checked;
+  const list = Ledger.list(r => (all || ym(r.date) === month) && (!t || r.type === t) && (!c || r.category === c) && (!w || r.who === w)
+    && (!q || String(r.note).toLowerCase().includes(q)))
+    .sort((a, b) => b.date.localeCompare(a.date) || b.updatedAt - a.updatedAt);
+  const out = sum(list.filter(r => r.type === 'expense')), inc = sum(list.filter(r => r.type === 'income'));
+  $('#fSum').textContent = `${list.length} 筆｜支出 ${money(out)}｜收入 ${money(inc)}`;
+  const shown = list.slice(0, 500);
+  $('#recBody').innerHTML = shown.map(r => `<tr data-id="${esc(r.id)}" class="${r.type}">
+    <td><input type="date" data-f="date" value="${esc(r.date)}"></td>
+    <td><select data-f="category">${catOptions(r.type, r.category)}</select></td>
+    <td><input data-f="note" value="${esc(r.note)}"></td>
+    <td><select data-f="who">${whoOptions(r.who)}</select></td>
+    <td class="num"><input class="amt" data-f="amount" value="${r.type === 'income' ? '+' : ''}${Number(r.amount)}"></td>
+    <td><button class="x" data-del title="刪除">✕</button></td></tr>`).join('')
+    + (list.length > shown.length ? `<tr><td colspan="6" class="muted">只顯示前 500 筆，請用上面的條件縮小範圍</td></tr>` : '');
+}
+
+function addRecord() {
+  const amount = parseFloat($('#aAmt').value.replace(/[,\s]/g, ''));
+  if (!(amount > 0)) return toast('請輸入金額');
+  const type = $('#aType').value, note = $('#aNote').value.trim();
+  Ledger.save({ type, date: $('#aDate').value || todayStr(), amount, category: $('#aCat').value, note, who: $('#aWho').value, source: 'manual' });
+  if (note) Ledger.learn(note, $('#aCat').value);
+  $('#aAmt').value = ''; $('#aNote').value = ''; $('#aNote').focus();
+  toast('已記下');
+}
+
+// ---------- 匯入發票 ----------
+let invItems = [], rawRows = [];
+async function readInvoiceFile(file) {
+  const buf = await file.arrayBuffer();
+  let text = new TextDecoder('utf-8').decode(buf);
+  if (text.includes('�')) text = new TextDecoder('big5').decode(buf); // 財政部檔案有時是 Big5
+  text = text.replace(/^﻿/, '');
+  invItems = parseEinvoicePipe(text);
+  if (invItems.length) { $('#iMapWrap').classList.add('hidden'); return previewInvoices(); }
+  // 不是財政部的「M|…」格式 → 當一般 CSV，讓使用者指定欄位
+  rawRows = parseCsv(text);
+  const head = rawRows[0] || [];
+  const opts = head.map((h, i) => `<option value="${i}">${esc(h || `第${i + 1}欄`)}</option>`).join('');
+  ['#iColDate', '#iColAmt', '#iColNote'].forEach(s => $(s).innerHTML = opts);
+  const guess = re => Math.max(0, head.findIndex(h => re.test(h)));
+  $('#iColDate').value = guess(/日期|date/i);
+  $('#iColAmt').value = guess(/金額|amount/i);
+  $('#iColNote').value = guess(/店|商家|名稱|說明|摘要/i);
+  $('#iMapWrap').classList.remove('hidden');
+  fromCsvColumns();
+}
+
+// 財政部手機條碼匯出檔：M|載具名稱|載具號碼|發票日期|統編|店名|發票號碼|總金額|狀態  D|發票號碼|小計|品名
+function parseEinvoicePipe(text) {
+  const byNo = new Map();
+  for (const line of text.split(/\r?\n/)) {
+    const f = line.split('|').map(s => s.trim());
+    if (f[0] === 'M' && /^\d{7,8}$/.test(f[3])) {
+      if (/作廢|折讓/.test(f[8] || '')) continue;
+      byNo.set(f[6], { invoiceNo: f[6], date: normDate(f[3]), store: f[5], amount: Number(f[7]) || 0, items: [] });
+    } else if (f[0] === 'D' && byNo.has(f[1]) && f[3]) {
+      byNo.get(f[1]).items.push(f[3]);
+    }
+  }
+  return [...byNo.values()].filter(x => x.date && x.amount > 0);
+}
+function parseCsv(text) {
+  const rows = []; let row = [], cell = '', q = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (q) { if (ch === '"' && text[i + 1] === '"') { cell += '"'; i++; } else if (ch === '"') q = false; else cell += ch; }
+    else if (ch === '"') q = true;
+    else if (ch === ',') { row.push(cell); cell = ''; }
+    else if (ch === '\n' || ch === '\r') { if (ch === '\r' && text[i + 1] === '\n') i++; row.push(cell); rows.push(row); row = []; cell = ''; }
+    else cell += ch;
+  }
+  if (cell || row.length) { row.push(cell); rows.push(row); }
+  return rows.filter(r => r.some(c => c.trim()));
+}
+function normDate(s) {
+  s = String(s).trim();
+  let m = s.match(/^(\d{4})(\d{2})(\d{2})$/) || s.match(/^(\d{3})(\d{2})(\d{2})$/) || s.replace(/[/.]/g, '-').match(/^(\d{2,4})-(\d{1,2})-(\d{1,2})/);
+  if (!m) return '';
+  let y = Number(m[1]); if (y < 1911) y += 1911; // 民國年
+  return `${y}-${String(m[2]).padStart(2, '0')}-${String(m[3]).padStart(2, '0')}`;
+}
+function fromCsvColumns() {
+  const di = +$('#iColDate').value, ai = +$('#iColAmt').value, ni = +$('#iColNote').value;
+  invItems = rawRows.slice(1).map(r => ({ invoiceNo: '', date: normDate(r[di]), store: String(r[ni] || '').trim(),
+    amount: Math.abs(parseFloat(String(r[ai] || '').replace(/[,$\s]/g, ''))) || 0, items: [] }))
+    .filter(x => x.date && x.amount > 0);
+  previewInvoices();
+}
+function previewInvoices() {
+  const existing = Ledger.list();
+  const haveNo = new Set(existing.map(r => r.invoiceNo).filter(Boolean));
+  let skipped = 0;
+  const rows = [];
+  invItems.forEach((x, i) => {
+    if (x.invoiceNo && haveNo.has(x.invoiceNo)) { skipped++; return; }
+    // 手機上可能已經記過同一筆：同一天、同金額、不是發票匯入的
+    const dup = existing.find(r => r.type === 'expense' && r.source !== 'invoice' && r.date === x.date && Number(r.amount) === x.amount);
+    const cat = Ledger.classify(x.store) || Ledger.classify(x.items.join(' ')) || '其他';
+    rows.push(`<tr data-i="${i}"><td><input type="checkbox" ${dup ? '' : 'checked'}></td><td>${x.date}</td>
+      <td>${esc(x.store)}<div class="muted">${esc(x.items.slice(0, 4).join('、'))}${x.items.length > 4 ? '…' : ''}</div></td>
+      <td class="num">${money(x.amount)}</td><td><select>${catOptions('expense', cat)}</select></td>
+      <td>${dup ? `<span class="tag warn" title="${esc(dup.note)}">可能已記過：${esc(dup.category)} ${esc(dup.note).slice(0, 8)}</span>` : ''}</td></tr>`);
+  });
+  $('#iBody').innerHTML = rows.join('');
+  $('#iInfo').textContent = `可匯入 ${rows.length} 張`;
+  $('#iInfo2').textContent = (skipped ? `（${skipped} 張之前匯入過，已略過）` : '') + ' 標「可能已記過」的預設不勾，確認後再勾。';
+  $('#iPreview').classList.remove('hidden');
+  $('#iGo').disabled = !rows.length;
+}
+function importInvoices() {
+  const who = $('#iWho').value;
+  const list = $$('#iBody tr').filter(tr => tr.querySelector('input').checked).map(tr => {
+    const x = invItems[tr.dataset.i];
+    const note = x.store + (x.items.length ? '｜' + x.items.slice(0, 3).join('、') : '');
+    return { type: 'expense', date: x.date, amount: x.amount, category: tr.querySelector('select').value, note, who, source: 'invoice', invoiceNo: x.invoiceNo };
+  });
+  if (!list.length) return toast('沒有勾選任何發票');
+  Ledger.save(list);
+  $('#iPreview').classList.add('hidden'); $('#iMapWrap').classList.add('hidden'); $('#iFile').value = '';
+  toast(`已匯入 ${list.length} 張發票`, 2500);
+}
+
+// ---------- 預算 ----------
+function renderBudget() {
+  const { income, estimated } = monthIncome(month);
+  $('#pctGrid').innerHTML = Ledger.cats('expense').map(c => `<label>${esc(c.name)}
+    <span><input type="number" min="0" max="100" step="1" data-c="${esc(c.name)}" value="${c.pct === '' ? '' : Number(c.pct)}"> %
+    <span class="muted" data-amt></span></span></label>`).join('');
+  const update = () => {
+    let total = 0;
+    $$('#pctGrid input').forEach(i => {
+      const p = Number(i.value) || 0; total += p;
+      i.parentElement.querySelector('[data-amt]').textContent = income ? `≈ ${money(income * p / 100)}` : '';
+    });
+    $('#pctSum').innerHTML = `已分配 ${total}%，目標儲蓄 <span style="color:${total > 100 ? 'var(--warn)' : 'var(--ok)'}">${100 - total}%</span>`
+      + (income ? `<span class="muted">（以${estimated ? '上月' : '本月'}收入 ${money(income)} 試算）</span>` : '');
+  };
+  $('#pctGrid').oninput = update; update();
+}
+async function saveBudget() {
+  const pct = Object.fromEntries($$('#pctGrid input').map(i => [i.dataset.c, i.value === '' ? '' : Number(i.value)]));
+  const cats = Ledger.categories.map(c => c.type === 'expense' && c.name in pct ? { ...c, pct: pct[c.name] } : c);
+  try { await Ledger.saveCategories(cats); toast('預算已儲存'); } catch (e) { toast('存到雲端失敗：' + e.message); }
+}
+
+// ---------- 分類與規則 ----------
+let draftCats = [], draftRules = [];
+function loadCatDraft() {
+  draftCats = Ledger.categories.map(c => ({ ...c, orig: c.name }));
+  draftRules = Ledger.rules.map(r => ({ ...r }));
+  renderCatEditor();
+}
+function renderCatEditor() {
+  for (const type of ['expense', 'income']) {
+    const list = draftCats.filter(c => c.type === type).sort((a, b) => a.sort - b.sort);
+    $(type === 'expense' ? '#catExpense' : '#catIncome').innerHTML = list.map((c, i) => `<li data-k="${draftCats.indexOf(c)}">
+      <input value="${esc(c.name)}" data-name><button data-mv="-1" ${i ? '' : 'disabled'} title="上移">↑</button>
+      <button data-mv="1" ${i < list.length - 1 ? '' : 'disabled'} title="下移">↓</button><button data-rm title="刪除">✕</button></li>`).join('');
+  }
+  const names = [...new Set(draftCats.map(c => c.name))];
+  $('#rCat').innerHTML = names.map(n => `<option>${esc(n)}</option>`).join('');
+  const q = $('#rFind').value.trim().toLowerCase();
+  $('#ruleCount').textContent = `${draftRules.length} 條`;
+  $('#ruleBody').innerHTML = draftRules.map((r, i) => ({ r, i })).filter(({ r }) => !q || String(r.keyword).toLowerCase().includes(q) || r.category.includes(q))
+    .map(({ r, i }) => `<tr data-r="${i}"><td>${esc(r.keyword)}</td><td><select>${names.map(n => `<option ${n === r.category ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></td>
+    <td style="width:36px"><button class="x" data-rrm title="刪除">✕</button></td></tr>`).join('');
+}
+function catEditorClick(e) {
+  const li = e.target.closest('li[data-k]');
+  if (e.target.dataset.add) {
+    const type = e.target.dataset.add;
+    draftCats.push({ name: '新分類', type, sort: Math.max(0, ...draftCats.filter(c => c.type === type).map(c => c.sort)) + 1, pct: '', orig: null });
+    return renderCatEditor();
+  }
+  if (!li) return;
+  const c = draftCats[li.dataset.k];
+  if (e.target.dataset.mv) {
+    const list = draftCats.filter(x => x.type === c.type).sort((a, b) => a.sort - b.sort);
+    const j = list.indexOf(c) + Number(e.target.dataset.mv);
+    list.splice(list.indexOf(c), 1); list.splice(j, 0, c);
+    list.forEach((x, i) => x.sort = i + 1);
+    renderCatEditor();
+  } else if (e.target.dataset.rm !== undefined) {
+    const used = Ledger.list(r => r.category === c.orig).length;
+    const to = c.type === 'income' ? '其他收入' : '其他';
+    if (c.name === to) return toast(`「${to}」不能刪`);
+    if (used && !confirm(`「${c.name}」有 ${used} 筆紀錄，刪掉後會改到「${to}」。確定嗎？`)) return;
+    c.removed = true; draftCats.splice(li.dataset.k, 1);
+    (draftCats.removedList ||= []).push(c);
+    renderCatEditor();
+  }
+}
+async function saveCatEditor() {
+  if (draftCats.some(c => !c.name)) return toast('分類名稱不能空白');
+  const names = draftCats.map(c => c.type + c.name);
+  if (new Set(names).size !== names.length) return toast('有重複的分類名稱');
+  // 改名、刪除 → 舊紀錄與規則一起搬
+  const moves = new Map();
+  draftCats.forEach(c => { if (c.orig && c.orig !== c.name) moves.set(c.orig, c.name); });
+  (draftCats.removedList || []).forEach(c => { if (c.orig) moves.set(c.orig, c.type === 'income' ? '其他收入' : '其他'); });
+  const changed = Ledger.list(r => moves.has(r.category)).map(r => ({ ...r, category: moves.get(r.category) }));
+  if (changed.length) Ledger.save(changed);
+  const rules = draftRules.map(r => ({ keyword: r.keyword, category: moves.get(r.category) || r.category }));
+  try {
+    await Ledger.saveCategories(draftCats.map(({ name, type, sort, pct }) => ({ name, type, sort, pct })));
+    await Ledger.saveRules(rules);
+    toast('已儲存' + (changed.length ? `，${changed.length} 筆紀錄已改分類` : ''));
+  } catch (e) { toast('存到雲端失敗：' + e.message); }
+  loadCatDraft();
+}
+
+// ---------- 畫面切換 ----------
+let tab = 'overview';
+function render() {
+  $('#mLabel').textContent = `${month.slice(0, 4)} 年 ${Number(month.slice(5))} 月`;
+  if (tab === 'overview') renderOverview();
+  if (tab === 'records') renderRecords();
+  if (tab === 'budget') renderBudget();
+}
+function fillSelects() {
+  $('#fCat').innerHTML = catOptions('', $('#fCat').value, true);
+  $('#fWho').innerHTML = whoOptions($('#fWho').value, true);
+  $('#aCat').innerHTML = catOptions($('#aType').value, $('#aCat').value);
+  $('#aWho').innerHTML = whoOptions($('#aWho').value || PEOPLE[0]);
+  $('#iWho').innerHTML = whoOptions($('#iWho').value || PEOPLE[0]);
+}
+function setStatus(s, err) {
+  const el = $('#status'), n = Ledger.outbox.length;
+  el.className = 'status' + (s === 'offline' ? ' offline' : '');
+  el.textContent = s === 'offline' ? `離線中${n ? `，${n} 筆待上傳` : ''}` : s === 'syncing' ? '同步中…' : n ? `${n} 筆上傳中…` : '已同步';
+  el.title = err ? err.message : '';
+}
+
+async function start() {
+  if (!Config.get()) return renderSetup($('#setup'));
+  await Ledger.init();
+  $('#app').classList.remove('hidden');
+  $('#aDate').value = todayStr();
+  fillSelects();
+  Ledger.onChange = () => { fillSelects(); render(); };
+  Ledger.onStatus = setStatus;
+
+  $('#tabs').onclick = e => {
+    const b = e.target.closest('button'); if (!b) return;
+    tab = b.dataset.tab;
+    $$('#tabs button').forEach(x => x.classList.toggle('on', x === b));
+    $$('[data-pane]').forEach(p => p.classList.toggle('hidden', p.dataset.pane !== tab));
+    if (tab === 'cats') loadCatDraft();
+    render();
+  };
+  $('#mPrev').onclick = () => { month = shiftMonth(month, -1); render(); };
+  $('#mNext').onclick = () => { month = shiftMonth(month, 1); render(); };
+  $('#shareBtn').onclick = () => {
+    $('#shareLink').value = phoneSetupLink(); $('#shareCode').value = Config.encode(Config.get());
+    $('#shareDlg').showModal();
+  };
+  $('#syncBtn').onclick = () => Ledger.sync().then(n => toast(n ? `更新了 ${n} 筆` : '已是最新')).catch(e => toast('同步失敗：' + e.message));
+
+  // 明細
+  ['#fText', '#fType', '#fCat', '#fWho', '#fAll'].forEach(s => $(s).addEventListener('input', renderRecords));
+  $('#aType').onchange = () => { $('#aCat').innerHTML = catOptions($('#aType').value); };
+  $('#aNote').oninput = () => { const c = Ledger.classify($('#aNote').value); if (c && Ledger.cats($('#aType').value).some(x => x.name === c)) $('#aCat').value = c; };
+  $('#aGo').onclick = addRecord;
+  $('#aAmt').addEventListener('keydown', e => { if (e.key === 'Enter') addRecord(); });
+  $('#recBody').addEventListener('change', e => {
+    const tr = e.target.closest('tr[data-id]'), f = e.target.dataset.f; if (!tr || !f) return;
+    const r = { ...Ledger.records.get(tr.dataset.id) };
+    let v = e.target.value;
+    if (f === 'amount') { v = Math.abs(parseFloat(String(v).replace(/[,+\s]/g, ''))); if (!(v > 0)) return toast('金額不對'); }
+    r[f] = v;
+    Ledger.save(r);
+    if (f === 'category' && r.note) Ledger.learn(r.source === 'invoice' ? r.note.split('｜')[0] : r.note, v);
+    toast('已修改');
+  });
+  $('#recBody').addEventListener('click', e => {
+    if (e.target.dataset.del === undefined) return;
+    const id = e.target.closest('tr').dataset.id;
+    if (confirm('刪除這筆？')) { Ledger.remove(id); toast('已刪除'); }
+  });
+  $('#openSheet').onclick = () => Ledger.sheetUrl ? openExternal(Ledger.sheetUrl) : toast('先按一次「同步」');
+
+  // 發票
+  $('#openEinv').onclick = () => openExternal('https://www.einvoice.nat.gov.tw/');
+  const drop = $('#drop');
+  drop.ondragover = e => { e.preventDefault(); drop.classList.add('over'); };
+  drop.ondragleave = () => drop.classList.remove('over');
+  drop.ondrop = e => { e.preventDefault(); drop.classList.remove('over'); const f = e.dataTransfer.files[0]; if (f) readInvoiceFile(f); };
+  $('#iFile').onchange = () => { const f = $('#iFile').files[0]; if (f) readInvoiceFile(f); };
+  ['#iColDate', '#iColAmt', '#iColNote'].forEach(s => $(s).onchange = fromCsvColumns);
+  $('#iGo').onclick = importInvoices;
+
+  // 預算、分類
+  $('#pctSave').onclick = saveBudget;
+  $('[data-pane=cats]').addEventListener('click', catEditorClick);
+  $('[data-pane=cats]').addEventListener('input', e => { if (e.target.dataset.name !== undefined) draftCats[e.target.closest('li').dataset.k].name = e.target.value.trim(); });
+  $('#rAdd').onclick = () => {
+    const kw = $('#rKw').value.trim(); if (!kw) return;
+    const i = draftRules.findIndex(r => r.keyword === kw);
+    if (i >= 0) draftRules[i].category = $('#rCat').value; else draftRules.unshift({ keyword: kw, category: $('#rCat').value });
+    $('#rKw').value = ''; renderCatEditor();
+  };
+  $('#rFind').oninput = renderCatEditor;
+  $('#ruleBody').addEventListener('change', e => { const tr = e.target.closest('tr'); draftRules[tr.dataset.r].category = e.target.value; });
+  $('#ruleBody').addEventListener('click', e => { if (e.target.dataset.rrm === undefined) return; draftRules.splice(e.target.closest('tr').dataset.r, 1); renderCatEditor(); });
+  $('#catSave').onclick = saveCatEditor;
+
+  window.addEventListener('resize', () => tab === 'overview' && renderTrend());
+  render();
+  Ledger.sync().catch(() => {});
+  setInterval(() => Ledger.sync().catch(() => {}), 5 * 60 * 1000); // 開著的時候每 5 分鐘同步一次
+}
+start();
+</script>
+</body>
+</html>
