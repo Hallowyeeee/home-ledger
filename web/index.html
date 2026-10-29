@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="記帳">
+<meta name="theme-color" content="#1f6f5c">
+<link rel="apple-touch-icon" href="icon-180.png">
+<title>家庭記帳</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  #quick { max-width: 480px; margin: 0 auto; padding: calc(12px + env(safe-area-inset-top)) 16px 40px; }
+  .top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .seg { display: flex; background: var(--line); border-radius: 999px; padding: 3px; }
+  .seg button { border: 0; background: transparent; border-radius: 999px; padding: 5px 14px; font-size: 15px; }
+  .seg button.on { background: var(--card); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+  #type button.on[data-t=income] { color: var(--income); }
+  .amount { display: flex; align-items: baseline; gap: 6px; margin: 18px 0 10px; border-bottom: 2px solid var(--accent); }
+  body.income .amount { border-color: var(--income); }
+  .amount span { font-size: 28px; color: var(--muted); }
+  #amount { border: 0; background: transparent; font-size: 48px; font-weight: 700; width: 100%; padding: 4px 0; outline: none; border-radius: 0; }
+  .cats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 14px 0; }
+  .cats button { border: 1px solid var(--line); background: var(--card); border-radius: 12px; padding: 14px 4px; font-size: 16px; }
+  .cats button.on { background: var(--accent-soft); border-color: var(--accent); font-weight: 600; }
+  body.income .cats button.on { background: var(--income-soft); border-color: var(--income); }
+  .row { display: flex; gap: 8px; }
+  .row input { flex: 1; min-width: 0; }
+  #save { width: 100%; margin-top: 14px; padding: 16px; font-size: 20px; border-radius: 14px; }
+  body.income #save { background: var(--income); }
+  .today { margin-top: 22px; }
+  .today ul { list-style: none; padding: 0; margin: 6px 0 0; }
+  .today li { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 9px 0; border-bottom: 1px solid var(--line); }
+  .today li b.in { color: var(--income); }
+  .today li button { border: 0; background: transparent; color: var(--muted); padding: 0 4px; }
+</style>
+</head>
+<body>
+<div id="setup" class="hidden"></div>
+
+<div id="quick" class="hidden">
+  <div class="top">
+    <div class="seg" id="type"><button data-t="expense" class="on">支出</button><button data-t="income">收入</button></div>
+    <div class="seg" id="who"></div>
+  </div>
+  <div class="amount"><span>$</span><input id="amount" type="text" inputmode="decimal" placeholder="0" autocomplete="off"></div>
+  <div class="cats" id="cats"></div>
+  <div class="row">
+    <input id="note" placeholder="店名或備註（會自動分類）" autocomplete="off">
+    <input id="date" type="date" style="flex:0 0 140px">
+  </div>
+  <button class="btn" id="save">記下</button>
+  <div class="today">
+    <div class="top"><span class="muted" id="todaySum">今天</span><span class="status" id="status"></span></div>
+    <ul id="todayList"></ul>
+  </div>
+</div>
+
+<script src="core.js"></script>
+<script>
+let type = 'expense', cat = '', catPicked = false;
+let who = localStorage.getItem('ledger.who') || PEOPLE[0];
+
+function paintType() {
+  $$('#type button').forEach(b => b.classList.toggle('on', b.dataset.t === type));
+  document.body.classList.toggle('income', type === 'income');
+  $('#cats').innerHTML = Ledger.cats(type).map(c => `<button data-c="${esc(c.name)}">${esc(c.name)}</button>`).join('');
+  paintCat();
+}
+function paintCat() { $$('#cats button').forEach(b => b.classList.toggle('on', b.dataset.c === cat)); }
+function paintWho() { $$('#who button').forEach(b => b.classList.toggle('on', b.dataset.p === who)); }
+
+function save() {
+  const amount = parseFloat($('#amount').value.replace(/[,\s]/g, ''));
+  if (!(amount > 0)) { toast('請輸入金額'); $('#amount').focus(); return; }
+  const note = $('#note').value.trim();
+  const fallback = type === 'income' ? '其他收入' : '其他';
+  const category = cat || Ledger.classify(note) || fallback;
+  Ledger.save({ type, date: $('#date').value || todayStr(), amount, category, note, who, source: 'manual' });
+  if (catPicked && note) Ledger.learn(note, category); // 自己選的分類 → 記住這個店名
+  toast(`已記 ${category} ${money(amount)}`);
+  $('#amount').value = ''; $('#note').value = ''; cat = ''; catPicked = false; paintCat();
+  $('#amount').focus();
+}
+
+function renderToday() {
+  const d = todayStr();
+  const list = Ledger.list(r => r.date === d).sort((a, b) => b.updatedAt - a.updatedAt);
+  const out = list.filter(r => r.type !== 'income').reduce((s, r) => s + Number(r.amount), 0);
+  $('#todaySum').textContent = `今天支出 ${money(out)}`;
+  $('#todayList').innerHTML = list.slice(0, 10).map(r => `<li>
+    <span>${esc(r.category)} <span class="muted">${esc(r.note)} · ${esc(r.who)}</span></span>
+    <span><b class="${r.type === 'income' ? 'in' : ''}">${r.type === 'income' ? '+' : ''}${money(r.amount)}</b>
+    <button data-del="${esc(r.id)}" aria-label="刪除">✕</button></span></li>`).join('');
+}
+
+function setStatus(s) {
+  const el = $('#status');
+  el.className = 'status' + (s === 'offline' ? ' offline' : '');
+  const n = Ledger.outbox.length;
+  el.textContent = s === 'offline' ? `離線中，${n} 筆待上傳` : s === 'syncing' ? '同步中…' : n ? `${n} 筆上傳中…` : '已同步';
+}
+
+async function start() {
+  Config.fromHash();
+  if (!Config.get()) return renderSetup($('#setup'));
+  await Ledger.init();
+  $('#quick').classList.remove('hidden');
+  $('#date').value = todayStr();
+  $('#who').innerHTML = PEOPLE.map(p => `<button data-p="${p}">${p}</button>`).join('');
+  paintWho(); paintType(); renderToday();
+
+  $('#type').onclick = e => { const b = e.target.closest('button'); if (!b) return; type = b.dataset.t; cat = ''; catPicked = false; paintType(); };
+  $('#who').onclick = e => { const b = e.target.closest('button'); if (!b) return; who = b.dataset.p; localStorage.setItem('ledger.who', who); paintWho(); };
+  $('#cats').onclick = e => { const b = e.target.closest('button'); if (!b) return; cat = b.dataset.c; catPicked = true; paintCat(); };
+  $('#note').oninput = () => {
+    if (catPicked) return;
+    const c = Ledger.classify($('#note').value);
+    cat = Ledger.cats(type).some(x => x.name === c) ? c : '';
+    paintCat();
+  };
+  $('#save').onclick = save;
+  $('#amount').addEventListener('keydown', e => { if (e.key === 'Enter') save(); });
+  $('#todayList').onclick = e => {
+    const id = e.target.dataset.del;
+    if (id && confirm('刪除這筆？')) { Ledger.remove(id); toast('已刪除'); }
+  };
+  Ledger.onChange = () => { renderToday(); if (!$('#cats').children.length) paintType(); };
+  Ledger.onStatus = setStatus;
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) Ledger.sync().catch(() => {}); });
+  $('#amount').focus();
+  Ledger.sync().then(paintType).catch(() => {});
+}
+start();
+</script>
+</body>
+</html>

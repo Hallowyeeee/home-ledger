@@ -1,0 +1,57 @@
+# 自動打包電腦版 .exe。合併到 main 後會發布到 Releases，下載連結固定：
+# https://github.com/Hallowyeeee/home-ledger/releases/latest/download/HomeLedger.exe
+name: 打包電腦版
+
+on:
+  push:
+    branches: [main]
+    paths: ['web/**', 'desktop/**', '.github/workflows/desktop.yml']
+  pull_request:
+    paths: ['web/**', 'desktop/**', '.github/workflows/desktop.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+      - name: 安裝工具
+        working-directory: desktop
+        run: npm ci
+      - name: 打包
+        working-directory: desktop
+        run: npx tauri build
+      - name: 整理檔案
+        shell: bash
+        run: |
+          mkdir dist
+          cp desktop/src-tauri/target/release/HomeLedger.exe dist/HomeLedger.exe
+          cp desktop/src-tauri/target/release/bundle/nsis/*-setup.exe dist/HomeLedger-setup.exe
+          ls -la dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HomeLedger
+          path: dist/
+      - name: 發布到 Releases
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: 家庭記帳 v1.0.${{ github.run_number }}
+          make_latest: true
+          body: |
+            下載 **HomeLedger.exe**，放在桌面雙擊就能用（不用安裝）。
+            或下載 HomeLedger-setup.exe 安裝到開始選單。
+          files: dist/*
