@@ -166,7 +166,7 @@
         <div class="scroll" style="max-height:420px"><table><tbody id="ruleBody"></tbody></table></div>
       </div>
     </div>
-    <p><button class="btn" id="catSave">儲存分類與規則</button> <span class="muted">改分類名稱時，舊紀錄會一起改過去。</span></p>
+    <p><button class="btn" id="catSave">儲存分類與規則</button> <span class="muted">改分類名稱時，舊紀錄會一起改過去。改成跟另一個分類同名，就會合併成一個。</span></p>
   </section>
 </div>
 
@@ -456,12 +456,22 @@ function catEditorClick(e) {
 }
 async function saveCatEditor() {
   if (draftCats.some(c => !c.name)) return toast('分類名稱不能空白');
-  const names = draftCats.map(c => c.type + c.name);
-  if (new Set(names).size !== names.length) return toast('有重複的分類名稱');
-  // 改名、刪除 → 舊紀錄與規則一起搬
+  // 改成跟另一個分類同名＝合併：留排前面的那個，預算 % 相加
+  const keep = new Map(), merged = [];
+  for (const c of [...draftCats].sort((a, b) => a.sort - b.sort)) {
+    const k = c.type + c.name, first = keep.get(k);
+    if (!first) { keep.set(k, c); continue; }
+    if (c.pct !== '' || first.pct !== '') first.pct = (Number(first.pct) || 0) + (Number(c.pct) || 0);
+    merged.push(c);
+  }
+  const removed = draftCats.removedList || [];
+  if (merged.length && !confirm(`要把 ${merged.map(c => `「${c.orig || c.name}」`).join('、')} 合併到同名的分類嗎？舊紀錄會一起搬過去。`)) return;
+  draftCats = draftCats.filter(c => !merged.includes(c));
+  // 改名、合併、刪除 → 舊紀錄與規則一起搬
   const moves = new Map();
+  merged.forEach(c => { if (c.orig) moves.set(c.orig, c.name); });
   draftCats.forEach(c => { if (c.orig && c.orig !== c.name) moves.set(c.orig, c.name); });
-  (draftCats.removedList || []).forEach(c => { if (c.orig) moves.set(c.orig, c.type === 'income' ? '其他收入' : '其他'); });
+  removed.forEach(c => { if (c.orig) moves.set(c.orig, c.type === 'income' ? '其他收入' : '其他'); });
   const changed = Ledger.list(r => moves.has(r.category)).map(r => ({ ...r, category: moves.get(r.category) }));
   if (changed.length) Ledger.save(changed);
   const rules = draftRules.map(r => ({ keyword: r.keyword, category: moves.get(r.category) || r.category }));
