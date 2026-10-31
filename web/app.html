@@ -69,6 +69,7 @@
       <button data-tab="records">明細</button>
       <button data-tab="invoice">匯入發票</button>
       <button data-tab="budget">預算</button>
+      <button data-tab="fixed">固定支出</button>
       <button data-tab="cats">分類與規則</button>
     </div>
     <div class="month"><button id="mPrev" aria-label="上個月">‹</button><b id="mLabel"></b><button id="mNext" aria-label="下個月">›</button></div>
@@ -150,6 +151,18 @@
       <div class="pct-grid" id="pctGrid"></div>
       <p id="pctSum" style="font-weight:600"></p>
       <p><button class="btn" id="pctSave">儲存預算</button></p>
+    </div>
+  </section>
+
+  <!-- 固定支出 -->
+  <section data-pane="fixed" class="hidden">
+    <div class="card">
+      <h2>每月固定支出<span class="legend" id="fxSum"></span></h2>
+      <p class="muted" style="margin-top:0">每個月到了那一天，程式會自動記一筆（同一個月不會重複）。哪個月金額不一樣，到「明細」改那一筆就好。刪掉這裡的項目，之後就不會再記。</p>
+      <table><thead><tr><th>名稱</th><th class="num" style="width:130px">金額</th><th style="width:140px">分類</th><th style="width:120px">每月幾號</th><th style="width:100px">誰</th><th style="width:36px"></th></tr></thead>
+      <tbody id="fxBody"></tbody></table>
+      <p><button class="btn ghost small" id="fxAdd">＋ 新增一項</button></p>
+      <p><button class="btn" id="fxSave">儲存固定支出</button> <span class="muted">新加的項目如果這個月的日子已經過了，存下後會馬上補記這個月那一筆。</span></p>
     </div>
   </section>
 
@@ -417,6 +430,38 @@ async function saveBudget() {
   try { await Ledger.saveCategories(cats); toast('預算已儲存'); } catch (e) { toast('存到雲端失敗：' + e.message); }
 }
 
+// ---------- 固定支出 ----------
+let draftFixed = [];
+function loadFixedDraft() { draftFixed = Ledger.fixed.map(f => ({ ...f })); renderFixed(); }
+function renderFixed() {
+  const cats = Ledger.cats('expense').map(c => c.name);
+  $('#fxBody').innerHTML = draftFixed.map((f, i) => `<tr data-i="${i}">
+    <td><input data-f="name" value="${esc(f.name)}" placeholder="例如 房租"></td>
+    <td class="num"><input data-f="amount" class="amt" inputmode="decimal" value="${f.amount || ''}" placeholder="0"></td>
+    <td><select data-f="category">${[...new Set([...cats, f.category])].filter(Boolean).map(n => `<option ${n === f.category ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></td>
+    <td><select data-f="day">${Array.from({ length: 31 }, (_, d) => `<option value="${d + 1}" ${d + 1 === Number(f.day) ? 'selected' : ''}>${d + 1} 號</option>`).join('')}</select></td>
+    <td><select data-f="who">${whoOptions(f.who)}</select></td>
+    <td><button class="x" data-fxrm title="刪除">✕</button></td></tr>`).join('')
+    || '<tr><td colspan="6" class="muted">還沒有固定支出，按「＋ 新增一項」開始填。</td></tr>';
+  const total = draftFixed.reduce((t, f) => t + (Number(f.amount) || 0), 0);
+  $('#fxSum').textContent = draftFixed.length ? `${draftFixed.length} 項，每月合計 ${money(total)}` : '';
+}
+async function saveFixed() {
+  const list = [];
+  for (const f of draftFixed) {
+    const amount = Math.abs(parseFloat(String(f.amount).replace(/[,+\s]/g, '')));
+    if (!f.name && !amount) continue; // 空白列略過
+    if (!f.name) return toast('有一項沒填名稱');
+    if (!(amount > 0)) return toast(`「${f.name}」的金額不對`);
+    list.push({ id: f.id || uid(), name: f.name, amount, category: f.category, day: Number(f.day) || 1, who: f.who || PEOPLE[0], start: f.start || ym(todayStr()) });
+  }
+  try { await Ledger.saveFixed(list); }
+  catch (e) { toast('存到雲端失敗：' + e.message + '（雲端程式可能要更新成最新的 Code.gs）', 4000); }
+  const n = Ledger.since ? Ledger.applyFixed() : 0;
+  toast('已儲存' + (n ? `，補記了 ${n} 筆` : ''));
+  loadFixedDraft();
+}
+
 // ---------- 分類與規則 ----------
 let draftCats = [], draftRules = [];
 function loadCatDraft() {
@@ -533,6 +578,11 @@ function setStatus(s, err) {
   el.title = err ? err.message : '';
 }
 
+// 同步完（確定拿到雲端最新紀錄）才補記固定支出，避免兩台電腦重複記
+function syncNow() {
+  return Ledger.sync().then(n => { if (n !== undefined) Ledger.applyFixed(); return n; });
+}
+
 async function start() {
   Config.fromHash();
   if (!Config.get()) return renderSetup($('#setup'));
@@ -549,6 +599,7 @@ async function start() {
     $$('#tabs button').forEach(x => x.classList.toggle('on', x === b));
     $$('[data-pane]').forEach(p => p.classList.toggle('hidden', p.dataset.pane !== tab));
     if (tab === 'cats') loadCatDraft();
+    if (tab === 'fixed') loadFixedDraft();
     render();
   };
   $('#mPrev').onclick = () => { month = shiftMonth(month, -1); render(); };
@@ -560,7 +611,7 @@ async function start() {
     $('#shareLink').value = phoneSetupLink(); $('#shareCode').value = Config.encode(Config.get());
     $('#shareDlg').showModal();
   };
-  $('#syncBtn').onclick = () => Ledger.sync().then(n => toast(n ? `更新了 ${n} 筆` : '已是最新')).catch(e => toast('同步失敗：' + e.message));
+  $('#syncBtn').onclick = () => syncNow().then(n => toast(n ? `更新了 ${n} 筆` : '已是最新')).catch(e => toast('同步失敗：' + e.message));
 
   // 明細
   ['#fText', '#fType', '#fCat', '#fWho', '#fAll'].forEach(s => $(s).addEventListener('input', renderRecords));
@@ -610,10 +661,16 @@ async function start() {
   $('#ruleBody').addEventListener('click', e => { if (e.target.dataset.rrm === undefined) return; draftRules.splice(e.target.closest('tr').dataset.r, 1); renderCatEditor(); });
   $('#catSave').onclick = saveCatEditor;
 
+  // 固定支出
+  $('#fxAdd').onclick = () => { draftFixed.push({ name: '', amount: '', category: Ledger.cats('expense')[0]?.name || '', day: 1, who: PEOPLE[0] }); renderFixed(); $('#fxBody tr:last-child input')?.focus(); };
+  $('#fxBody').addEventListener('input', e => { const tr = e.target.closest('tr[data-i]'), f = e.target.dataset.f; if (tr && f) draftFixed[tr.dataset.i][f] = e.target.value.trim(); });
+  $('#fxBody').addEventListener('click', e => { if (e.target.dataset.fxrm === undefined) return; draftFixed.splice(e.target.closest('tr').dataset.i, 1); renderFixed(); });
+  $('#fxSave').onclick = saveFixed;
+
   window.addEventListener('resize', () => tab === 'overview' && renderTrend());
   render();
-  Ledger.sync().catch(() => {});
-  setInterval(() => { Ledger.sync().catch(() => {}); checkUpdate(); }, 5 * 60 * 1000); // 開著的時候每 5 分鐘同步一次、檢查新版
+  syncNow().catch(() => {});
+  setInterval(() => { syncNow().catch(() => {}); checkUpdate(); }, 5 * 60 * 1000); // 開著的時候每 5 分鐘同步一次、檢查新版
   checkUpdate();
 }
 start();

@@ -6,6 +6,7 @@
  *   - upsert：新增或修改紀錄（刪除＝把 deleted 設成 1）
  *   - saveCategories / saveRules：整份覆蓋分類、自動分類規則（電腦上編輯用）
  *   - learnRule：新增或修改一條自動分類規則（手機「自己學」用）
+ *   - saveFixed：整份覆蓋固定支出清單（電腦上編輯用；每月自動記帳由電腦程式負責）
  *
  * 安裝方式見 README.md。
  */
@@ -17,6 +18,7 @@ const SHEETS = {
   Records: ['id', 'type', 'date', 'amount', 'category', 'note', 'who', 'source', 'invoiceNo', 'updatedAt', 'deleted'],
   Categories: ['name', 'type', 'sort', 'pct'],
   Rules: ['keyword', 'category'],
+  Fixed: ['id', 'name', 'amount', 'category', 'day', 'who', 'start'],
 };
 
 const DEFAULT_CATEGORIES = [
@@ -52,6 +54,7 @@ function sheet_(name) {
     if (name === 'Categories') appendRows_(sh, DEFAULT_CATEGORIES);
     if (name === 'Rules') appendRows_(sh, DEFAULT_RULES);
     if (name === 'Records') sh.getRange('C:C').setNumberFormat('@'); // 日期存文字，避免時區換算
+    if (name === 'Fixed') sh.getRange('G:G').setNumberFormat('@');
   }
   return sh;
 }
@@ -101,6 +104,9 @@ function handle_(p) {
         replaceAll_('Categories', (p.categories || []).map(c => [c.name, c.type, Number(c.sort) || 0, c.pct === '' || c.pct == null ? '' : Number(c.pct)]));
         return { ok: true };
       case 'learnRule': return { ok: true, saved: learnRule_(String(p.keyword || '').trim(), String(p.category || '')) };
+      case 'saveFixed':
+        replaceAll_('Fixed', (p.fixed || []).map(f => [f.id, f.name, Number(f.amount) || 0, f.category, Number(f.day) || 1, f.who, String(f.start)]));
+        return { ok: true };
       case 'saveRules':
         replaceAll_('Rules', (p.rules || []).map(r => [r.keyword, r.category]));
         return { ok: true };
@@ -114,7 +120,9 @@ function handle_(p) {
 function sync_(since) {
   const serverTime = Date.now();
   const records = readAll_('Records').map(normRecord_).filter(r => r.id && r.updatedAt > since);
-  return { ok: true, serverTime, records, categories: readAll_('Categories'), rules: readAll_('Rules'),
+  const fixed = readAll_('Fixed').map(f => ({ ...f, amount: Number(f.amount) || 0, day: Number(f.day) || 1,
+    start: f.start instanceof Date ? Utilities.formatDate(f.start, 'Asia/Taipei', 'yyyy-MM') : String(f.start).slice(0, 7) }));
+  return { ok: true, serverTime, records, categories: readAll_('Categories'), rules: readAll_('Rules'), fixed,
     sheetUrl: SpreadsheetApp.getActiveSpreadsheet().getUrl() };
 }
 

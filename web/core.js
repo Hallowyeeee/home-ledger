@@ -81,6 +81,7 @@ const Ledger = {
   records: new Map(),   // id -> 紀錄（含已刪除，deleted=1）
   categories: [],       // { name, type, sort, pct }
   rules: [],            // { keyword, category }
+  fixed: [],            // 固定支出 { id, name, amount, category, day, who, start(yyyy-mm) }
   since: 0,             // 上次同步的雲端時間
   sheetUrl: '',
   outbox: [],           // 還沒送到雲端的紀錄
@@ -94,6 +95,7 @@ const Ledger = {
     (s.records || []).forEach(r => this.records.set(r.id, r));
     this.categories = s.categories?.length ? s.categories : DEFAULT_CATEGORIES;
     this.rules = s.rules || [];
+    this.fixed = s.fixed || [];
     this.since = s.since || 0;
     this.sheetUrl = s.sheetUrl || '';
     this.outbox = (await IDB.get('outbox')) || [];
@@ -101,7 +103,7 @@ const Ledger = {
   },
   persist() {
     return Promise.all([
-      IDB.set('state', { records: [...this.records.values()], categories: this.categories, rules: this.rules, since: this.since, sheetUrl: this.sheetUrl }),
+      IDB.set('state', { records: [...this.records.values()], categories: this.categories, rules: this.rules, fixed: this.fixed, since: this.since, sheetUrl: this.sheetUrl }),
       IDB.set('outbox', this.outbox),
       IDB.set('ruleOutbox', this.ruleOutbox),
     ]);
@@ -168,6 +170,29 @@ const Ledger = {
     await this.persist(); this.onChange();
     await this.api({ action: 'saveCategories', categories });
   },
+  async saveFixed(fixed) {
+    this.fixed = fixed;
+    await this.persist(); this.onChange();
+    await this.api({ action: 'saveFixed', fixed });
+  },
+  // 固定支出：到了每月那天自動記一筆。id 固定是「fixed-項目-月份」，所以不會重複；
+  // 自己刪掉的那筆也還留著（deleted=1），不會被補回來。
+  applyFixed(today = todayStr()) {
+    const add = [];
+    for (const f of this.fixed) {
+      if (!f.id || !(Number(f.amount) > 0) || !/^\d{4}-\d{2}$/.test(f.start)) continue;
+      const from = [f.start, shiftMonth(ym(today), -12)].sort()[1]; // 最多往回補一年
+      for (let m = from; m <= ym(today); m = shiftMonth(m, 1)) {
+        const last = new Date(Number(m.slice(0, 4)), Number(m.slice(5)), 0).getDate();
+        const date = `${m}-${String(Math.min(Number(f.day) || 1, last)).padStart(2, '0')}`;
+        const id = `fixed-${f.id}-${m}`;
+        if (date > today || this.records.has(id)) continue;
+        add.push({ id, type: 'expense', date, amount: Number(f.amount), category: f.category, note: f.name, who: f.who, source: 'fixed' });
+      }
+    }
+    if (add.length) this.save(add);
+    return add.length;
+  },
   async saveRules(rules) {
     this.rules = rules; this.ruleOutbox = [];
     await this.persist(); this.onChange();
@@ -205,6 +230,7 @@ const Ledger = {
     for (const r of j.records) if (!pending.has(r.id)) this.records.set(r.id, r);
     this.categories = j.categories.map(c => ({ ...c, sort: Number(c.sort) || 0, pct: c.pct === '' ? '' : Number(c.pct) }));
     if (!this.ruleOutbox.length) this.rules = j.rules;
+    if (j.fixed) this.fixed = j.fixed; // 舊版 Code.gs 沒有這欄，就保留本機的
     this.since = j.serverTime;
     this.sheetUrl = j.sheetUrl || this.sheetUrl;
     await this.persist();

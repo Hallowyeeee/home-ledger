@@ -70,7 +70,7 @@
 ## 程式結構（給維護的人）
 | 位置 | 內容 |
 |---|---|
-| `backend/Code.gs` | Apps Script 後端：`sync`（增量同步）、`upsert`、`learnRule`、`saveCategories`、`saveRules` |
+| `backend/Code.gs` | Apps Script 後端：`sync`（增量同步）、`upsert`、`learnRule`、`saveCategories`、`saveRules`、`saveFixed`（固定支出） |
 | `web/core.js` | 共用資料層：IndexedDB 本機資料、待送清單、同步、自動分類 |
 | `web/index.html` | 手機快速輸入（GitHub Pages 發布） |
 | `web/app.html` | 電腦版畫面（.exe 開線上這份，也可用瀏覽器開） |
