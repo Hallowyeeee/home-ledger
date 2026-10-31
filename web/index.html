@@ -36,6 +36,47 @@
   .today li { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 9px 0; border-bottom: 1px solid var(--line); }
   .today li b.in { color: var(--income); }
   .today li button { border: 0; background: transparent; color: var(--muted); padding: 0 4px; }
+  /* 下方切換 */
+  #nav { position: fixed; left: 0; right: 0; bottom: 0; display: flex; justify-content: center; padding: 8px 16px calc(8px + env(safe-area-inset-bottom)); background: var(--bg); border-top: 1px solid var(--line); z-index: 5; }
+  #nav .seg { width: 100%; max-width: 448px; }
+  #nav .seg button { flex: 1; padding: 9px; font-size: 16px; }
+  #quick, #all { padding-bottom: calc(80px + env(safe-area-inset-bottom)) !important; }
+  /* 看全部 */
+  #all { max-width: 480px; margin: 0 auto; padding: calc(12px + env(safe-area-inset-top)) 16px 0; }
+  .mnav { display: flex; align-items: center; gap: 6px; }
+  .mnav b { font-size: 18px; min-width: 112px; text-align: center; }
+  .mnav button { border: 1px solid var(--line); background: var(--card); border-radius: 10px; width: 34px; height: 34px; font-size: 18px; }
+  #aWho button { padding: 5px 10px; font-size: 14px; }
+  .kp { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 14px 0; }
+  .kp div { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px; }
+  .kp small { color: var(--muted); display: block; font-size: 12px; }
+  .kp b { font-size: 18px; font-variant-numeric: tabular-nums; }
+  .box { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px; margin-bottom: 12px; }
+  .box h3 { margin: 0 0 10px; font-size: 15px; display: flex; justify-content: space-between; align-items: baseline; }
+  .box h3 small { font-weight: 400; color: var(--muted); font-size: 12px; }
+  .pie { display: flex; gap: 14px; align-items: center; }
+  .pie svg { flex: 0 0 120px; width: 120px; height: 120px; }
+  .crow { margin: 9px 0; font-size: 14px; }
+  .crow .t { display: flex; justify-content: space-between; gap: 6px; }
+  .crow i { display: inline-block; width: 9px; height: 9px; border-radius: 3px; margin-right: 6px; }
+  .crow .bar { height: 6px; background: var(--line); border-radius: 99px; overflow: hidden; margin-top: 4px; }
+  .crow .bar span { display: block; height: 100%; border-radius: 99px; }
+  .crow .left { font-size: 12px; color: var(--muted); }
+  .crow .left.over { color: var(--warn); }
+  #trend6 { width: 100%; height: 150px; display: block; }
+  #trend6 text { fill: var(--muted); font-size: 10px; }
+  #aFind { width: 100%; margin-bottom: 8px; }
+  .day { margin-top: 12px; font-size: 13px; color: var(--muted); display: flex; justify-content: space-between; }
+  .rec { list-style: none; padding: 0; margin: 4px 0 0; background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .rec > li { border-bottom: 1px solid var(--line); }
+  .rec > li:last-child { border-bottom: 0; }
+  .rec .r { display: flex; justify-content: space-between; gap: 8px; padding: 10px 12px; }
+  .rec .r .n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rec .r b.in { color: var(--income); }
+  .rec .ed { padding: 4px 12px 12px; font-size: 14px; }
+  .rec .ed .items { color: var(--muted); font-size: 13px; margin-bottom: 8px; line-height: 1.6; }
+  .rec .ed .row select, .rec .ed .row input { flex: 1; }
+  .rec .ed .row button { flex: 0 0 auto; }
 </style>
 </head>
 <body>
@@ -58,6 +99,20 @@
     <ul id="todayList"></ul>
   </div>
 </div>
+
+<div id="all" class="hidden">
+  <div class="top">
+    <div class="mnav"><button id="mPrev" aria-label="上個月">‹</button><b id="mLabel"></b><button id="mNext" aria-label="下個月">›</button></div>
+    <div class="seg" id="aWho"></div>
+  </div>
+  <div class="kp"><div><small>支出</small><b id="kOut"></b></div><div><small>收入</small><b id="kIn" style="color:var(--income)"></b></div><div><small>結餘</small><b id="kNet"></b></div></div>
+  <div class="box"><h3>錢花去哪<small id="budgetNote"></small></h3><div class="pie"><svg id="pie" viewBox="0 0 120 120"></svg><div id="pieTop" style="flex:1;font-size:13px"></div></div><div id="catRows"></div></div>
+  <div class="box"><h3>近 6 個月<small><i style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--accent)"></i> 支出 <i style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--income);margin-left:6px"></i> 收入</small></h3><svg id="trend6"></svg></div>
+  <input id="aFind" type="search" placeholder="搜尋店名、品項（會找全部月份）">
+  <div id="recs"></div>
+</div>
+
+<div id="nav" class="hidden"><div class="seg" id="view"><button data-v="quick" class="on">記帳</button><button data-v="all">看全部</button></div></div>
 
 <script src="core.js"></script>
 <script>
@@ -98,6 +153,116 @@ function renderToday() {
     <button data-del="${esc(r.id)}" aria-label="刪除">✕</button></span></li>`).join('');
 }
 
+// ---------- 看全部 ----------
+const COLORS = ['#1f6f5c', '#e07a5f', '#7b6cd9', '#e9b949', '#c75d8c', '#5fa8a0', '#a0785a', '#8a8f8c'];
+let month = ym(todayStr()), aWho = '', openId = null;
+const sumOf = l => l.reduce((t, r) => t + Number(r.amount), 0);
+const mine = r => !aWho || r.who === aWho;
+function catColor(name) { const i = Ledger.cats('expense').findIndex(c => c.name === name); return COLORS[(i < 0 ? 7 : i) % COLORS.length]; }
+
+function renderAll() {
+  if ($('#all').classList.contains('hidden')) return;
+  $('#mLabel').textContent = `${month.slice(0, 4)} 年 ${Number(month.slice(5))} 月`;
+  $$('#aWho button').forEach(b => b.classList.toggle('on', b.dataset.p === aWho));
+  const inM = Ledger.list(r => ym(r.date) === month && mine(r));
+  const out = sumOf(inM.filter(r => r.type === 'expense')), inc = sumOf(inM.filter(r => r.type === 'income'));
+  $('#kOut').textContent = money(out); $('#kIn').textContent = money(inc);
+  $('#kNet').textContent = money(inc - out); $('#kNet').style.color = inc - out < 0 ? 'var(--warn)' : '';
+
+  // 分類：圓餅＋預算
+  const byCat = new Map();
+  inM.filter(r => r.type === 'expense').forEach(r => byCat.set(r.category, (byCat.get(r.category) || 0) + Number(r.amount)));
+  const allInc = sumOf(Ledger.list(r => ym(r.date) === month && r.type === 'income'));
+  const base = allInc || sumOf(Ledger.list(r => ym(r.date) === shiftMonth(month, -1) && r.type === 'income'));
+  const showBudget = !aWho && base > 0;
+  $('#budgetNote').textContent = showBudget ? `預算以${allInc ? '本月' : '上月'}收入 ${money(base)} 計` : '';
+  const cats = [...new Set([...Ledger.cats('expense').map(c => c.name), ...byCat.keys()])]
+    .map(name => ({ name, amt: byCat.get(name) || 0, pct: Ledger.cats('expense').find(c => c.name === name)?.pct }))
+    .filter(c => c.amt > 0 || (showBudget && c.pct !== '' && c.pct != null))
+    .sort((a, b) => b.amt - a.amt);
+  let a0 = -Math.PI / 2, arcs = '';
+  for (const c of cats.filter(c => c.amt > 0)) {
+    const a1 = a0 + (c.amt / out) * Math.PI * 2;
+    const big = a1 - a0 > Math.PI ? 1 : 0, p = (a, r) => `${60 + r * Math.cos(a)} ${60 + r * Math.sin(a)}`;
+    arcs += c.amt === out ? `<circle cx="60" cy="60" r="44" fill="none" stroke="${catColor(c.name)}" stroke-width="28"/>`
+      : `<path d="M ${p(a0, 58)} A 58 58 0 ${big} 1 ${p(a1, 58)} L ${p(a1, 30)} A 30 30 0 ${big} 0 ${p(a0, 30)} Z" fill="${catColor(c.name)}"/>`;
+    a0 = a1;
+  }
+  $('#pie').innerHTML = out ? arcs : '<circle cx="60" cy="60" r="44" fill="none" stroke="var(--line)" stroke-width="28"/>';
+  $('#pieTop').innerHTML = out ? cats.filter(c => c.amt > 0).slice(0, 4).map(c => `<div><i style="display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:6px;background:${catColor(c.name)}"></i>${esc(c.name)} <b>${Math.round(c.amt / out * 100)}%</b></div>`).join('') : '<span class="muted">這個月還沒有支出</span>';
+  $('#catRows').innerHTML = cats.map(c => {
+    const budget = showBudget && c.pct !== '' && c.pct != null ? base * Number(c.pct) / 100 : 0;
+    const w = budget ? Math.min(100, c.amt / budget * 100) : out ? c.amt / out * 100 : 0;
+    const left = budget ? (c.amt > budget ? `<span class="left over">超過 ${money(c.amt - budget)}</span>` : `<span class="left">剩 ${money(budget - c.amt)}</span>`) : '';
+    return `<div class="crow"><div class="t"><span><i style="background:${catColor(c.name)}"></i>${esc(c.name)} ${left}</span><b>${money(c.amt)}</b></div>
+      <div class="bar"><span style="width:${w}%;background:${budget && c.amt > budget ? 'var(--warn)' : catColor(c.name)}"></span></div></div>`;
+  }).join('');
+
+  // 近 6 個月
+  const ms = Array.from({ length: 6 }, (_, i) => shiftMonth(month, i - 5));
+  const data = ms.map(m => { const l = Ledger.list(r => ym(r.date) === m && mine(r)); return { m, out: sumOf(l.filter(r => r.type === 'expense')), inc: sumOf(l.filter(r => r.type === 'income')) }; });
+  const W = $('#trend6').clientWidth || 340, H = 150, max = Math.max(1, ...data.flatMap(d => [d.out, d.inc])), bw = Math.min(16, W / 6 / 3);
+  $('#trend6').setAttribute('viewBox', `0 0 ${W} ${H}`);
+  $('#trend6').innerHTML = data.map((d, i) => {
+    const x = (i + 0.5) * W / 6, h = v => v / max * (H - 34);
+    return `<rect x="${x - bw - 1}" y="${H - 18 - h(d.out)}" width="${bw}" height="${h(d.out)}" rx="3" fill="var(--accent)" opacity="${d.m === month ? 1 : .55}"/>
+      <rect x="${x + 1}" y="${H - 18 - h(d.inc)}" width="${bw}" height="${h(d.inc)}" rx="3" fill="var(--income)" opacity="${d.m === month ? 1 : .55}"/>
+      <text x="${x}" y="${H - 4}" text-anchor="middle">${Number(d.m.slice(5))}月</text>
+      ${d.out ? `<text x="${x - bw / 2 - 1}" y="${H - 22 - h(d.out)}" text-anchor="middle">${d.out >= 10000 ? (d.out / 10000).toFixed(1) + '萬' : Math.round(d.out / 1000) + 'k'}</text>` : ''}`;
+  }).join('');
+  renderRecs();
+}
+
+function renderRecs() {
+  const q = $('#aFind').value.trim().toLowerCase();
+  const list = Ledger.list(r => mine(r) && (q ? String(r.note).toLowerCase().includes(q) || r.category.toLowerCase().includes(q) : ym(r.date) === month))
+    .sort((a, b) => b.date.localeCompare(a.date) || b.updatedAt - a.updatedAt).slice(0, 300);
+  const days = new Map();
+  list.forEach(r => (days.get(r.date) || days.set(r.date, []).get(r.date)).push(r));
+  const wk = '日一二三四五六';
+  $('#recs').innerHTML = (q ? `<p class="muted">找到 ${list.length} 筆，合計 ${money(sumOf(list.filter(r => r.type === 'expense')))}</p>` : '')
+    + [...days].map(([d, rs]) => `<div class="day"><span>${Number(d.slice(5, 7))}/${Number(d.slice(8))}（${wk[new Date(d + 'T00:00').getDay()]}）</span><span>${money(sumOf(rs.filter(r => r.type === 'expense')))}</span></div>
+      <ul class="rec">${rs.map(recItem).join('')}</ul>`).join('')
+    || '<p class="muted" style="text-align:center;margin:24px 0">沒有紀錄</p>';
+}
+function recItem(r) {
+  const [store, ...rest] = String(r.note).split('｜');
+  const inc = r.type === 'income';
+  const head = `<div class="r" data-open="${esc(r.id)}"><span class="n">${esc(r.category)} <span class="muted">${esc(store)}${r.source === 'invoice' && rest.length ? ' 🧾' : ''} · ${esc(r.who)}</span></span>
+    <b class="${inc ? 'in' : ''}">${inc ? '+' : ''}${money(r.amount)}</b></div>`;
+  if (openId !== r.id) return `<li>${head}</li>`;
+  const items = rest.join('｜').split('、').filter(Boolean);
+  return `<li>${head}<div class="ed">
+    ${items.length ? `<div class="items">${items.map(esc).join('<br>')}</div>` : ''}
+    <div class="row"><select data-ec>${Ledger.cats(r.type).map(c => `<option ${c.name === r.category ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>
+    <input data-ea inputmode="decimal" value="${Number(r.amount)}" style="max-width:110px">
+    <button class="btn" data-esave="${esc(r.id)}" style="padding:8px 14px">存</button><button class="btn ghost" data-edel="${esc(r.id)}" style="padding:8px 12px;color:var(--warn)">刪</button></div></div></li>`;
+}
+function recsClick(e) {
+  const t = e.target;
+  if (t.dataset.esave) {
+    const ed = t.closest('.ed'), r = { ...Ledger.records.get(t.dataset.esave) };
+    const amount = parseFloat(ed.querySelector('[data-ea]').value.replace(/[,\s]/g, ''));
+    if (!(amount > 0)) return toast('金額不對');
+    const changedCat = r.category !== ed.querySelector('[data-ec]').value;
+    r.amount = amount; r.category = ed.querySelector('[data-ec]').value;
+    openId = null; Ledger.save(r);
+    if (changedCat && r.note) Ledger.learn(String(r.note).split('｜')[0], r.category);
+    return toast('已修改');
+  }
+  if (t.dataset.edel) { if (confirm('刪除這筆？')) { openId = null; Ledger.remove(t.dataset.edel); toast('已刪除'); } return; }
+  const h = t.closest('[data-open]');
+  if (h) { openId = openId === h.dataset.open ? null : h.dataset.open; renderRecs(); }
+}
+function showView(v) {
+  $$('#view button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
+  $('#quick').classList.toggle('hidden', v !== 'quick');
+  $('#all').classList.toggle('hidden', v !== 'all');
+  try { localStorage.setItem('ledger.view', v); } catch {}
+  if (v === 'all') renderAll(); else $('#amount').focus();
+  window.scrollTo(0, 0);
+}
+
 function setStatus(s) {
   const el = $('#status');
   el.className = 'status' + (s === 'offline' ? ' offline' : '');
@@ -110,6 +275,7 @@ async function start() {
   if (!Config.get()) return renderSetup($('#setup'));
   await Ledger.init();
   $('#quick').classList.remove('hidden');
+  $('#nav').classList.remove('hidden');
   $('#date').value = todayStr();
   $('#who').innerHTML = PEOPLE.map(p => `<button data-p="${p}"><img src="${AVATAR[p]}" alt="">${p}</button>`).join('');
   paintWho(); paintType(); renderToday();
@@ -129,10 +295,26 @@ async function start() {
     const id = e.target.dataset.del;
     if (id && confirm('刪除這筆？')) { Ledger.remove(id); toast('已刪除'); }
   };
-  Ledger.onChange = () => { renderToday(); if (!$('#cats').children.length) paintType(); };
+  Ledger.onChange = () => { renderToday(); renderAll(); if (!$('#cats').children.length) paintType(); };
+
+  // 看全部
+  $('#aWho').innerHTML = ['', ...PEOPLE].map(p => `<button data-p="${p}">${p ? `<img src="${AVATAR[p]}" alt="" style="width:18px;height:18px;vertical-align:-4px">` : '全部'}</button>`).join('');
+  $('#aWho').onclick = e => { const b = e.target.closest('button'); if (!b) return; aWho = b.dataset.p; renderAll(); };
+  $('#view').onclick = e => { const b = e.target.closest('button'); if (b) showView(b.dataset.v); };
+  $('#mPrev').onclick = () => { month = shiftMonth(month, -1); renderAll(); };
+  $('#mNext').onclick = () => { month = shiftMonth(month, 1); renderAll(); };
+  $('#aFind').oninput = renderRecs;
+  $('#recs').onclick = recsClick;
+  // 左右滑換月份
+  let sx = 0, sy = 0;
+  $('#all').addEventListener('touchstart', e => { sx = e.touches[0].clientX; sy = e.touches[0].clientY; }, { passive: true });
+  $('#all').addEventListener('touchend', e => {
+    const dx = e.changedTouches[0].clientX - sx, dy = e.changedTouches[0].clientY - sy;
+    if (Math.abs(dx) > 70 && Math.abs(dx) > Math.abs(dy) * 2 && !e.target.closest('input,select')) { month = shiftMonth(month, dx < 0 ? 1 : -1); renderAll(); }
+  });
   Ledger.onStatus = setStatus;
   document.addEventListener('visibilitychange', () => { if (!document.hidden) Ledger.sync().catch(() => {}); });
-  $('#amount').focus();
+  try { if (localStorage.getItem('ledger.view') === 'all') showView('all'); else $('#amount').focus(); } catch { $('#amount').focus(); }
   Ledger.sync().then(paintType).catch(() => {});
 }
 start();

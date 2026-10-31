@@ -1,5 +1,5 @@
 // 離線也能打開：每次先抓網路上的最新版，抓不到才用上次存下來的那份。
-const CACHE = 'home-ledger-v6';
+const CACHE = 'home-ledger-v7';
 const FILES = ['./', 'index.html', 'app.html', 'core.js', 'style.css', 'icon-180.png', 'version.json', 'mushroom.png', 'me.png', 'wife.png'];
 
 self.addEventListener('install', e => {
