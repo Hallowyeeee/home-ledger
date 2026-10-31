@@ -72,7 +72,7 @@
       <button data-tab="cats">分類與規則</button>
     </div>
     <div class="month"><button id="mPrev" aria-label="上個月">‹</button><b id="mLabel"></b><button id="mNext" aria-label="下個月">›</button></div>
-    <div class="toolbar" style="margin:0"><span class="status" id="status"></span><button class="btn ghost small" id="syncBtn">同步</button><button class="btn ghost small" id="shareBtn">設定碼</button></div>
+    <div class="toolbar" style="margin:0"><span class="status" id="status"></span><button class="btn ghost small" id="syncBtn">同步</button><button class="btn ghost small" id="shareBtn">設定碼</button><button class="btn ghost small" id="aboutBtn">關於<span id="updDot" class="hidden" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--warn);margin-left:6px;vertical-align:1px"></span></button></div>
   </header>
 
   <!-- 總覽 -->
@@ -170,6 +170,16 @@
   </section>
 </div>
 
+<dialog id="aboutDlg" style="border:1px solid var(--line);border-radius:14px;background:var(--card);color:var(--ink);width:420px;max-width:92vw">
+  <h3 style="margin-top:0">關於</h3>
+  <div class="card" style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+    <div><div class="muted">程式版本</div><b id="verNow" style="font-size:20px">–</b></div>
+    <button class="btn" id="updBtn" disabled>已是最新版</button>
+  </div>
+  <p class="muted" id="verNotes"></p>
+  <p class="muted hidden" id="exeNote">電腦程式本身也有新版：<a href="#" id="exeLink">下載新版 HomeLedger.exe</a>，下載後蓋掉舊的即可。</p>
+  <p style="text-align:right;margin-bottom:0"><button class="btn ghost" onclick="this.closest('dialog').close()">關閉</button></p>
+</dialog>
 <dialog id="shareDlg" style="border:1px solid var(--line);border-radius:14px;background:var(--card);color:var(--ink);max-width:560px">
   <h3 style="margin-top:0">給其他裝置用</h3>
   <p class="muted">手機：把這個連結傳到手機（LINE 給自己或子淳），用 Safari 打開一次，再「加入主畫面」。</p>
@@ -483,6 +493,24 @@ async function saveCatEditor() {
   loadCatDraft();
 }
 
+// ---------- 版本與更新 ----------
+// 版本號寫在 version.json。打開時讀到的就是目前版本；之後線上的版本比較新，就顯示「更新到 vX」。
+let loadedVer = null;
+const newer = (a, b) => { const x = String(a).split('.').map(Number), y = String(b).split('.').map(Number); for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); return false; };
+async function checkUpdate() {
+  let v;
+  try { v = await (await fetch('version.json', { cache: 'no-store' })).json(); } catch { return; }
+  if (!loadedVer) loadedVer = v.version;
+  $('#verNow').textContent = 'v' + loadedVer;
+  const has = newer(v.version, loadedVer);
+  $('#updBtn').disabled = !has;
+  $('#updBtn').textContent = has ? `更新到 v${v.version}` : '已是最新版';
+  $('#verNotes').textContent = has ? `新版內容：${v.notes}` : (v.notes ? `這版內容：${v.notes}` : '');
+  $('#updDot').classList.toggle('hidden', !has);
+  const exeVer = T?.app?.getVersion ? await T.app.getVersion().catch(() => null) : null;
+  $('#exeNote').classList.toggle('hidden', !(exeVer && v.exe && newer(v.exe, exeVer)));
+}
+
 // ---------- 畫面切換 ----------
 let tab = 'overview';
 function render() {
@@ -525,6 +553,9 @@ async function start() {
   };
   $('#mPrev').onclick = () => { month = shiftMonth(month, -1); render(); };
   $('#mNext').onclick = () => { month = shiftMonth(month, 1); render(); };
+  $('#aboutBtn').onclick = () => { checkUpdate(); $('#aboutDlg').showModal(); };
+  $('#updBtn').onclick = () => { if (!$('#updBtn').disabled) location.reload(); };
+  $('#exeLink').onclick = e => { e.preventDefault(); openExternal('https://github.com/Hallowyeeee/home-ledger/releases/latest/download/HomeLedger.exe'); };
   $('#shareBtn').onclick = () => {
     $('#shareLink').value = phoneSetupLink(); $('#shareCode').value = Config.encode(Config.get());
     $('#shareDlg').showModal();
@@ -582,7 +613,8 @@ async function start() {
   window.addEventListener('resize', () => tab === 'overview' && renderTrend());
   render();
   Ledger.sync().catch(() => {});
-  setInterval(() => Ledger.sync().catch(() => {}), 5 * 60 * 1000); // 開著的時候每 5 分鐘同步一次
+  setInterval(() => { Ledger.sync().catch(() => {}); checkUpdate(); }, 5 * 60 * 1000); // 開著的時候每 5 分鐘同步一次、檢查新版
+  checkUpdate();
 }
 start();
 </script>

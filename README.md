@@ -73,5 +73,7 @@
 | `backend/Code.gs` | Apps Script 後端：`sync`（增量同步）、`upsert`、`learnRule`、`saveCategories`、`saveRules` |
 | `web/core.js` | 共用資料層：IndexedDB 本機資料、待送清單、同步、自動分類 |
 | `web/index.html` | 手機快速輸入（GitHub Pages 發布） |
-| `web/app.html` | 電腦版畫面（.exe 內嵌，也可用瀏覽器開） |
+| `web/app.html` | 電腦版畫面（.exe 開線上這份，也可用瀏覽器開） |
+| `web/version.json` | 版本號與更新說明。改 web/ 就把 version 加一，電腦版「關於」會出現「更新到 vX」；改 desktop/ 時一併調高 `exe` 和 tauri.conf.json 的 version |
+| `web/launch.html`、`web/sw.js` | .exe 入口（開線上最新版，連不上用內建版）、離線快取 |
 | `desktop/` | Tauri 2 殼，GitHub Actions 在 Windows 打包成 .exe 並發布到 Releases |
