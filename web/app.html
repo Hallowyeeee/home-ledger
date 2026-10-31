@@ -103,7 +103,7 @@
         <button class="btn small" id="aGo">記一筆</button>
       </div>
       <div class="toolbar">
-        <input id="fText" placeholder="搜尋備註、店名">
+        <input id="fText" placeholder="搜尋備註、店名、發票品項">
         <select id="fType"><option value="">支出＋收入</option><option value="expense">只看支出</option><option value="income">只看收入</option></select>
         <select id="fCat"></select>
         <select id="fWho"></select>
@@ -134,11 +134,11 @@
       <div class="drop" id="drop">把發票檔案拖到這裡，或 <label style="color:var(--accent);cursor:pointer;text-decoration:underline">選擇檔案<input type="file" id="iFile" accept=".csv,.txt,text/csv,text/plain" hidden></label></div>
       <div id="iMapWrap" class="toolbar hidden" style="margin-top:12px">
         <span class="muted">看不懂這個檔案的格式，請指定欄位：</span>
-        日期<select id="iColDate"></select> 金額<select id="iColAmt"></select> 店名<select id="iColNote"></select>
+        日期<select id="iColDate"></select> 金額<select id="iColAmt"></select> 店名<select id="iColNote"></select> 發票號碼<select id="iColNo"></select> 品名<select id="iColItem"></select>
       </div>
       <div id="iPreview" class="hidden" style="margin-top:14px">
         <div class="toolbar"><b id="iInfo"></b><span class="muted" id="iInfo2"></span><button class="btn" id="iGo" style="margin-left:auto">匯入勾選的發票</button></div>
-        <div class="scroll"><table><thead><tr><th style="width:36px"></th><th style="width:110px">日期</th><th>店名／品項</th><th class="num" style="width:100px">金額</th><th style="width:130px">分類</th><th style="width:150px">備註</th></tr></thead><tbody id="iBody"></tbody></table></div>
+        <div class="scroll"><table><thead><tr><th style="width:36px"></th><th style="width:110px">日期</th><th>店名／品項（會依品項自動拆分類）</th><th class="num" style="width:100px">金額</th><th style="width:130px">主要分類</th><th style="width:170px">備註</th></tr></thead><tbody id="iBody"></tbody></table></div>
       </div>
     </div>
   </section>
@@ -293,13 +293,26 @@ function renderRecords() {
   $('#recBody').innerHTML = shown.map(r => `<tr data-id="${esc(r.id)}" class="${r.type}">
     <td><input type="date" data-f="date" value="${esc(r.date)}"></td>
     <td><select data-f="category">${catOptions(r.type, r.category)}</select></td>
-    <td><input data-f="note" value="${esc(r.note)}"></td>
+    <td><div style="display:flex;gap:2px;align-items:center"><input data-f="note" value="${esc(r.note)}">${r.source === 'invoice' && String(r.note).includes('｜') ? '<button class="x" data-items title="看這張發票買了什麼">🧾</button>' : ''}</div></td>
     <td><select data-f="who">${whoOptions(r.who)}</select></td>
     <td class="num"><input class="amt" data-f="amount" value="${r.type === 'income' ? '+' : ''}${Number(r.amount)}"></td>
     <td><button class="x" data-del title="刪除">✕</button></td></tr>`).join('')
     + (list.length > shown.length ? `<tr><td colspan="6" class="muted">只顯示前 500 筆，請用上面的條件縮小範圍</td></tr>` : '');
 }
 
+// 明細：展開一張發票的品項（同一張發票拆到別的分類的，也一起列出來）
+function toggleItems(tr) {
+  if (tr.nextElementSibling?.classList.contains('items')) return tr.nextElementSibling.remove();
+  const r = Ledger.records.get(tr.dataset.id);
+  const parts = r.invoiceNo ? Ledger.list(x => x.invoiceNo === r.invoiceNo) : [r];
+  const html = parts.map(p => {
+    const items = String(p.note).split('｜').slice(1).join('｜').split('、').filter(Boolean);
+    return `<div style="margin:2px 0"><span class="tag">${esc(p.category)} ${money(p.amount)}</span></div>`
+      + items.map(i => `<div style="padding-left:12px">${esc(i)}</div>`).join('');
+  }).join('');
+  tr.insertAdjacentHTML('afterend', `<tr class="items"><td></td><td colspan="5" class="muted" style="font-size:13px">
+    ${esc(String(r.note).split('｜')[0])}${r.invoiceNo ? `（發票 ${esc(r.invoiceNo)}）` : ''}${html}</td></tr>`);
+}
 function addRecord() {
   const amount = parseFloat($('#aAmt').value.replace(/[,\s]/g, ''));
   if (!(amount > 0)) return toast('請輸入金額');
@@ -313,39 +326,95 @@ function addRecord() {
 // ---------- 匯入發票 ----------
 let invItems = [], rawRows = [];
 async function readInvoiceFile(file) {
+  invStale = [];
   const buf = await file.arrayBuffer();
   let text = new TextDecoder('utf-8').decode(buf);
   if (text.includes('�')) text = new TextDecoder('big5').decode(buf); // 財政部檔案有時是 Big5
   text = text.replace(/^﻿/, '');
-  invItems = parseEinvoicePipe(text);
+  invItems = parseEinvoice(text);
+  if (!invItems.length) invItems = parseMofCsv(text);
   if (invItems.length) { $('#iMapWrap').classList.add('hidden'); return previewInvoices(); }
   // 不是財政部的「M|…」格式 → 當一般 CSV，讓使用者指定欄位
   rawRows = parseCsv(text);
   const head = rawRows[0] || [];
   const opts = head.map((h, i) => `<option value="${i}">${esc(h || `第${i + 1}欄`)}</option>`).join('');
   ['#iColDate', '#iColAmt', '#iColNote'].forEach(s => $(s).innerHTML = opts);
+  ['#iColNo', '#iColItem'].forEach(s => $(s).innerHTML = '<option value="-1">（沒有）</option>' + opts);
   const guess = re => Math.max(0, head.findIndex(h => re.test(h)));
   $('#iColDate').value = guess(/日期|date/i);
   $('#iColAmt').value = guess(/金額|amount/i);
   $('#iColNote').value = guess(/店|商家|名稱|說明|摘要/i);
+  const opt = re => head.findIndex(h => re.test(h));
+  $('#iColNo').value = opt(/發票號碼|發票字軌/);
+  $('#iColItem').value = opt(/品名|品項|商品/);
   $('#iMapWrap').classList.remove('hidden');
   fromCsvColumns();
 }
 
 // 財政部手機條碼匯出檔：M|載具名稱|載具號碼|發票日期|統編|店名|發票號碼|總金額|狀態  D|發票號碼|小計|品名
-function parseEinvoicePipe(text) {
+// 新版平台有時改用逗號分隔、前面多「表頭=」「明細=」，兩種都吃。
+function parseEinvoice(text) {
   const byNo = new Map();
-  for (const line of text.split(/\r?\n/)) {
-    const f = line.split('|').map(s => s.trim());
-    if (f[0] === 'M' && /^\d{7,8}$/.test(f[3])) {
-      if (/作廢|折讓/.test(f[8] || '')) continue;
-      byNo.set(f[6], { invoiceNo: f[6], date: normDate(f[3]), store: f[5], amount: Number(f[7]) || 0, items: [] });
+  for (let line of text.split(/\r?\n/)) {
+    line = line.replace(/^\s*(表頭|明細)=/, '').trim();
+    if (!/^[MD][|,]/.test(line)) continue;
+    const f = (line[1] === '|' ? line.split('|') : parseCsv(line)[0] || []).map(x => String(x).trim());
+    if (f[0] === 'M') {
+      const date = normDate(f[3]);
+      if (!date || /作廢|折讓/.test(f[8] || '')) continue;
+      byNo.set(f[6], { invoiceNo: f[6], date, store: f[5], amount: toNum(f[7]), items: [] });
     } else if (f[0] === 'D' && byNo.has(f[1]) && f[3]) {
-      byNo.get(f[1]).items.push(f[3]);
+      byNo.get(f[1]).items.push({ name: f[3], amount: toNum(f[2]) });
     }
   }
-  return [...byNo.values()].filter(x => x.date && x.amount > 0);
+  return [...byNo.values()].filter(x => x.amount > 0);
 }
+// 財政部平台新版「消費明細」CSV：一列一個品項，同一張發票有好幾列。
+// 欄位：載具自訂名稱,發票日期,發票號碼,發票金額,發票狀態,折讓,賣方統一編號,賣方名稱,賣方地址,買方統編,消費明細_數量,消費明細_單價,消費明細_金額,消費明細_品名
+// 品名有時會斷成好幾行（例如停車費的票號、車號），那幾行接回上一個品項，取最後一行當品名。
+let invStale = [];
+function parseMofCsv(text) {
+  const lines = text.split(/\r?\n/);
+  const head = (parseCsv(lines[0] || '')[0] || []).map(h => h.trim());
+  const col = name => head.indexOf(name);
+  const cDate = col('發票日期'), cNo = col('發票號碼'), cState = col('發票狀態'), cStore = col('賣方名稱'),
+    cAmt = col('消費明細_金額'), cItem = col('消費明細_品名'), cCarrier = col('載具自訂名稱');
+  if (cDate < 0 || cNo < 0 || cAmt < 0 || cItem < 0) return [];
+  const rows = [];
+  for (const line of lines.slice(1)) {
+    if (!line.trim() || /^(捐贈|注意)/.test(line.trim())) continue;
+    const f = parseCsv(line)[0] || [];
+    if (normDate(f[cDate]) && f.length >= head.length) rows.push(f);
+    else if (rows.length) rows[rows.length - 1].more = line.trim(); // 斷行的品名
+  }
+  const byNo = new Map();
+  invStale = [];
+  const names = new Set();
+  for (const f of rows) {
+    if (/作廢/.test(f[cState] || '')) continue;
+    const no = f[cNo].trim(), full = String(f[cStore] || '').trim();
+    names.add(full); if (cCarrier >= 0) names.add(String(f[cCarrier]).trim());
+    const x = byNo.get(no) || byNo.set(no, { invoiceNo: no, date: normDate(f[cDate]), store: shortStore(full), full, amount: 0, items: [] }).get(no);
+    const amt = parseFloat(String(f[cAmt]).replace(/[,\s]/g, '')) || 0;
+    x.amount += amt;
+    if (amt) x.items.push({ name: (f.more || f[cItem]).trim(), amount: amt }); // 半糖、去冰這種 0 元的不列
+  }
+  const list = [...byNo.values()].filter(x => x.amount > 0);
+  // 之前用舊版匯入的：一個品項一筆、備註只有「手機條碼」或店家全名、沒有發票號碼 → 這次換成完整的
+  const dates = new Set(list.map(x => x.date));
+  invStale = Ledger.list(r => r.source === 'invoice' && !r.invoiceNo && dates.has(r.date) && names.has(String(r.note).trim()));
+  return list;
+}
+// 「統一超商股份有限公司桃園市第一００九分公司」→「統一超商」；分店名稱有意義的留著（例如 石二鍋楊梅中山北店）
+const STORE_ALIAS = [[/^統一超商/, '7-11'], [/^康達盛通/, '全聯'], [/^全家便利商店/, '全家'], [/^萊爾富/, '萊爾富'], [/^寶雅/, '寶雅'], [/^台灣大創/, '大創']];
+function shortStore(full) {
+  for (const [re, name] of STORE_ALIAS) if (re.test(full)) return name;
+  const m = full.match(/^(.*?)(股份)?有限公司(.*)$/);
+  if (!m) return full;
+  const rest = m[3].trim();
+  return rest && !/(分公司|門市部?|營業所)$/.test(rest) ? `${m[1]} ${rest}` : m[1];
+}
+const toNum = v => Math.abs(parseFloat(String(v ?? '').replace(/[,$\s元]/g, ''))) || 0;
 function parseCsv(text) {
   const rows = []; let row = [], cell = '', q = false;
   for (let i = 0; i < text.length; i++) {
@@ -367,44 +436,105 @@ function normDate(s) {
   return `${y}-${String(m[2]).padStart(2, '0')}-${String(m[3]).padStart(2, '0')}`;
 }
 function fromCsvColumns() {
-  const di = +$('#iColDate').value, ai = +$('#iColAmt').value, ni = +$('#iColNote').value;
-  invItems = rawRows.slice(1).map(r => ({ invoiceNo: '', date: normDate(r[di]), store: String(r[ni] || '').trim(),
-    amount: Math.abs(parseFloat(String(r[ai] || '').replace(/[,$\s]/g, ''))) || 0, items: [] }))
-    .filter(x => x.date && x.amount > 0);
+  const di = +$('#iColDate').value, ai = +$('#iColAmt').value, ni = +$('#iColNote').value, noI = +$('#iColNo').value, itI = +$('#iColItem').value;
+  const byKey = new Map();
+  for (const r of rawRows.slice(1)) {
+    const date = normDate(r[di]), store = String(r[ni] || '').trim(), amt = toNum(r[ai]);
+    if (!date || !amt) continue;
+    const no = noI >= 0 ? String(r[noI] || '').trim() : '';
+    if (itI < 0) { byKey.set(byKey.size, { invoiceNo: no, date, store, amount: amt, items: [] }); continue; }
+    // 一列一個品項：同一張發票（同號碼，或同天同店）合併起來
+    const k = no || date + store;
+    const x = byKey.get(k) || byKey.set(k, { invoiceNo: no, date, store, amount: 0, items: [] }).get(k);
+    x.items.push({ name: String(r[itI] || '').trim(), amount: amt }); x.amount += amt;
+  }
+  invItems = [...byKey.values()];
   previewInvoices();
 }
+
+// 一張發票依品項拆分類：品名有對到規則就歸那類（例如尿布→小孩用品），其餘歸主要分類。
+// 折扣、零頭（品項加總跟發票總額的差）算在主要分類。
+function splitInvoice(x, mainCat) {
+  const valid = new Set(Ledger.cats('expense').map(c => c.name));
+  const groups = new Map(), extra = [];
+  for (const it of x.items) {
+    if (!(it.amount > 0)) { extra.push(it); continue; } // 折扣
+    const c = Ledger.classify(it.name);
+    const cat = c && valid.has(c) ? c : mainCat;
+    (groups.get(cat) || groups.set(cat, []).get(cat)).push(it);
+  }
+  // 全部品項都歸同一類（或沒有品項）→ 整張就算那一類
+  if (groups.size <= 1) return [{ category: groups.keys().next().value || mainCat, amount: x.amount, items: x.items }];
+  const parts = [...groups].map(([category, items]) => ({ category, items, amount: items.reduce((t, i) => t + i.amount, 0) }));
+  // 折扣、零頭算到主要分類（沒有的話算到金額最大的那類）
+  const host = parts.find(p => p.category === mainCat) || parts.reduce((a, b) => (b.amount > a.amount ? b : a));
+  host.amount += x.amount - parts.reduce((t, p) => t + p.amount, 0);
+  host.items.push(...extra);
+  return parts.sort((a, b) => (b.category === mainCat) - (a.category === mainCat)).filter(p => p.amount > 0);
+}
+const itemText = items => items.map(i => `${i.name} $${Math.round(i.amount)}`).join('、');
+const invNote = (store, items) => store + (items.length ? '｜' + itemText(items) : '');
+
+// 之前匯入、但沒有品項的同一張發票 → 這次補上品項（舊的換掉，不會變兩筆）
+function oldInvoiceRecords(x, existing) {
+  return existing.filter(r => r.source === 'invoice' && (r.invoiceNo
+    ? r.invoiceNo === x.invoiceNo
+    : r.date === x.date && Number(r.amount) === x.amount && String(r.note).split('｜')[0] === x.store));
+}
+let invPlan = [];
 function previewInvoices() {
   const existing = Ledger.list();
-  const haveNo = new Set(existing.map(r => r.invoiceNo).filter(Boolean));
   let skipped = 0;
+  invPlan = [];
   const rows = [];
-  invItems.forEach((x, i) => {
-    if (x.invoiceNo && haveNo.has(x.invoiceNo)) { skipped++; return; }
+  invItems.forEach(x => {
+    const old = oldInvoiceRecords(x, existing);
+    const upgrade = old.length && x.items.length && !old.some(r => String(r.note).includes('$'));
+    if (old.length && !upgrade) { skipped++; return; }
     // 手機上可能已經記過同一筆：同一天、同金額、不是發票匯入的
-    const dup = existing.find(r => r.type === 'expense' && r.source !== 'invoice' && r.date === x.date && Number(r.amount) === x.amount);
-    const cat = Ledger.classify(x.store) || Ledger.classify(x.items.join(' ')) || '其他';
-    rows.push(`<tr data-i="${i}"><td><input type="checkbox" ${dup ? '' : 'checked'}></td><td>${x.date}</td>
-      <td>${esc(x.store)}<div class="muted">${esc(x.items.slice(0, 4).join('、'))}${x.items.length > 4 ? '…' : ''}</div></td>
+    const dup = !upgrade && existing.find(r => r.type === 'expense' && r.source !== 'invoice' && r.date === x.date && Number(r.amount) === x.amount);
+    const cat = upgrade ? old[0].category : Ledger.classify(x.store) || Ledger.classify(x.items.map(i => i.name).join(' ')) || '其他';
+    const k = invPlan.push({ x, old: upgrade ? old : [] }) - 1;
+    rows.push(`<tr data-k="${k}"><td><input type="checkbox" ${dup ? '' : 'checked'}></td><td>${x.date}</td>
+      <td>${esc(x.store)}<div class="muted" data-split></div></td>
       <td class="num">${money(x.amount)}</td><td><select>${catOptions('expense', cat)}</select></td>
-      <td>${dup ? `<span class="tag warn" title="${esc(dup.note)}">可能已記過：${esc(dup.category)} ${esc(dup.note).slice(0, 8)}</span>` : ''}</td></tr>`);
+      <td>${upgrade ? '<span class="tag">補上品項</span>' : dup ? `<span class="tag warn" title="${esc(dup.note)}">可能已記過：${esc(dup.category)} ${esc(dup.note).slice(0, 8)}</span>` : ''}</td></tr>`);
   });
   $('#iBody').innerHTML = rows.join('');
+  $$('#iBody tr').forEach(paintSplit);
+  const ups = invPlan.filter(p => p.old.length).length;
   $('#iInfo').textContent = `可匯入 ${rows.length} 張`;
-  $('#iInfo2').textContent = (skipped ? `（${skipped} 張之前匯入過，已略過）` : '') + ' 標「可能已記過」的預設不勾，確認後再勾。';
+  $('#iInfo2').textContent = (invStale.length ? `（之前匯入的 ${invStale.length} 筆沒有品項，這次會換成完整的發票）` : '') + (ups ? `（其中 ${ups} 張是之前匯過、這次補上品項）` : '') + (skipped ? `（${skipped} 張之前匯入過，已略過）` : '') + ' 標「可能已記過」的預設不勾，確認後再勾。';
   $('#iPreview').classList.remove('hidden');
   $('#iGo').disabled = !rows.length;
 }
+// 預覽：列出品項和價錢；有拆到別的分類就標出來
+function paintSplit(tr) {
+  const { x } = invPlan[tr.dataset.k];
+  const parts = splitInvoice(x, tr.querySelector('select').value);
+  tr.querySelector('[data-split]').innerHTML = !x.items.length ? '（檔案裡沒有品項）'
+    : parts.length < 2 ? (parts[0].category !== tr.querySelector('select').value ? `<span class="tag">→ ${esc(parts[0].category)}</span> ` : '') + esc(itemText(x.items))
+    : parts.map(p => `<div><span class="tag">${esc(p.category)} ${money(p.amount)}</span> ${esc(itemText(p.items)) || '（其他、折扣）'}</div>`).join('');
+}
 function importInvoices() {
-  const who = $('#iWho').value;
-  const list = $$('#iBody tr').filter(tr => tr.querySelector('input').checked).map(tr => {
-    const x = invItems[tr.dataset.i];
-    const note = x.store + (x.items.length ? '｜' + x.items.slice(0, 3).join('、') : '');
-    return { type: 'expense', date: x.date, amount: x.amount, category: tr.querySelector('select').value, note, who, source: 'invoice', invoiceNo: x.invoiceNo };
+  const fallbackWho = $('#iWho').value;
+  const list = [];
+  let n = 0;
+  const dates = new Set();
+  $$('#iBody tr').filter(tr => tr.querySelector('input').checked).forEach(tr => {
+    const { x, old } = invPlan[tr.dataset.k];
+    const who = old[0]?.who || fallbackWho;
+    old.forEach(r => list.push({ ...r, deleted: 1 }));
+    dates.add(x.date);
+    for (const p of splitInvoice(x, tr.querySelector('select').value))
+      list.push({ type: 'expense', date: x.date, amount: p.amount, category: p.category, note: invNote(x.store, p.items), who, source: 'invoice', invoiceNo: x.invoiceNo });
+    n++;
   });
-  if (!list.length) return toast('沒有勾選任何發票');
+  if (!n) return toast('沒有勾選任何發票');
+  invStale.filter(r => dates.has(r.date)).forEach(r => list.push({ ...r, deleted: 1 })); // 舊版匯入的換掉
   Ledger.save(list);
   $('#iPreview').classList.add('hidden'); $('#iMapWrap').classList.add('hidden'); $('#iFile').value = '';
-  toast(`已匯入 ${list.length} 張發票`, 2500);
+  toast(`已匯入 ${n} 張發票`, 2500);
 }
 
 // ---------- 預算 ----------
@@ -578,9 +708,21 @@ function setStatus(s, err) {
   el.title = err ? err.message : '';
 }
 
+// 看過真實發票後補的自動分類規則（舊的試算表沒有，第一次同步完補進去；已經有的關鍵字不動）
+const MORE_RULES = [['康達盛通', '日用品'], ['大創', '日用品'], ['清潔袋', '日用品'], ['清潔劑', '日用品'], ['衛生紙', '日用品'],
+  ['汽油', '帳單/交通'], ['加油站', '帳單/交通'], ['停車費', '帳單/交通'], ['Digital Storage', '帳單/交通'], ['iCloud', '帳單/交通'],
+  ['餐飲', '餐飲'], ['便當', '餐飲'], ['飯糰', '餐飲'], ['土司', '餐飲'], ['米漿', '餐飲'], ['豆漿', '餐飲'], ['奶茶', '餐飲'], ['麥茶', '餐飲'], ['啤酒', '餐飲'],
+  ['名品城', '購物娛樂'], ['皮件', '購物娛樂'], ['羽球', '購物娛樂'], ['泳衣', '購物娛樂']];
+function addMoreRules() {
+  try { if (localStorage.getItem('ledger.rules2')) return; } catch { return; }
+  const have = new Set(Ledger.rules.map(r => String(r.keyword)));
+  const valid = new Set(Ledger.cats('expense').map(c => c.name));
+  MORE_RULES.forEach(([k, c]) => { if (!have.has(k) && valid.has(c)) Ledger.learn(k, c); });
+  try { localStorage.setItem('ledger.rules2', '1'); } catch {}
+}
 // 同步完（確定拿到雲端最新紀錄）才補記固定支出，避免兩台電腦重複記
 function syncNow() {
-  return Ledger.sync().then(n => { if (n !== undefined) Ledger.applyFixed(); return n; });
+  return Ledger.sync().then(n => { if (n !== undefined) { Ledger.applyFixed(); addMoreRules(); } return n; });
 }
 
 async function start() {
@@ -630,6 +772,7 @@ async function start() {
     toast('已修改');
   });
   $('#recBody').addEventListener('click', e => {
+    if (e.target.dataset.items !== undefined) return toggleItems(e.target.closest('tr'));
     if (e.target.dataset.del === undefined) return;
     const id = e.target.closest('tr').dataset.id;
     if (confirm('刪除這筆？')) { Ledger.remove(id); toast('已刪除'); }
@@ -643,7 +786,8 @@ async function start() {
   drop.ondragleave = () => drop.classList.remove('over');
   drop.ondrop = e => { e.preventDefault(); drop.classList.remove('over'); const f = e.dataTransfer.files[0]; if (f) readInvoiceFile(f); };
   $('#iFile').onchange = () => { const f = $('#iFile').files[0]; if (f) readInvoiceFile(f); };
-  ['#iColDate', '#iColAmt', '#iColNote'].forEach(s => $(s).onchange = fromCsvColumns);
+  ['#iColDate', '#iColAmt', '#iColNote', '#iColNo', '#iColItem'].forEach(s => $(s).onchange = fromCsvColumns);
+  $('#iBody').addEventListener('change', e => { if (e.target.tagName === 'SELECT') paintSplit(e.target.closest('tr')); });
   $('#iGo').onclick = importInvoices;
 
   // 預算、分類
