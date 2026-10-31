@@ -16,6 +16,8 @@
   .seg { display: flex; background: var(--line); border-radius: 999px; padding: 3px; }
   .seg button { border: 0; background: transparent; border-radius: 999px; padding: 5px 14px; font-size: 15px; }
   .seg button.on { background: var(--card); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+  #who button { display: inline-flex; align-items: center; gap: 4px; }
+  #who img { width: 26px; height: 26px; margin: -4px 0; filter: drop-shadow(0 0 1px rgba(0,0,0,.45)); }
   #type button.on[data-t=income] { color: var(--income); }
   .amount { display: flex; align-items: baseline; gap: 6px; margin: 18px 0 10px; border-bottom: 2px solid var(--accent); }
   body.income .amount { border-color: var(--income); }
@@ -108,7 +110,7 @@ async function start() {
   await Ledger.init();
   $('#quick').classList.remove('hidden');
   $('#date').value = todayStr();
-  $('#who').innerHTML = PEOPLE.map(p => `<button data-p="${p}">${p}</button>`).join('');
+  $('#who').innerHTML = PEOPLE.map(p => `<button data-p="${p}">${p === '濠亭' ? '<img src="me.png" alt="">' : ''}${p}</button>`).join('');
   paintWho(); paintType(); renderToday();
 
   $('#type').onclick = e => { const b = e.target.closest('button'); if (!b) return; type = b.dataset.t; cat = ''; catPicked = false; paintType(); };
