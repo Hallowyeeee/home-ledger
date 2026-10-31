@@ -72,7 +72,7 @@
       <button data-tab="cats">分類與規則</button>
     </div>
     <div class="month"><button id="mPrev" aria-label="上個月">‹</button><b id="mLabel"></b><button id="mNext" aria-label="下個月">›</button></div>
-    <div class="toolbar" style="margin:0"><span class="status" id="status"></span><button class="btn ghost small" id="syncBtn">同步</button><button class="btn ghost small" id="shareBtn">設定碼</button><button class="btn ghost small" id="aboutBtn">關於<span id="updDot" class="hidden" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--warn);margin-left:6px;vertical-align:1px"></span></button></div>
+    <div class="toolbar" style="margin:0"><span class="status" id="status"></span><button class="btn ghost small" id="syncBtn">同步</button><button class="btn ghost small" id="shareBtn">設定碼</button><button id="aboutBtn" title="關於" aria-label="關於" style="position:relative;border:0;background:transparent;padding:0;width:34px;height:34px"><img src="mushroom.png" alt="" style="width:34px;height:34px;border-radius:50%;display:block"><span id="updDot" class="hidden" style="position:absolute;top:-1px;right:-1px;width:10px;height:10px;border-radius:50%;background:#e11d48;border:2px solid var(--bg)"></span></button></div>
   </header>
 
   <!-- 總覽 -->
@@ -171,7 +171,7 @@
 </div>
 
 <dialog id="aboutDlg" style="border:1px solid var(--line);border-radius:14px;background:var(--card);color:var(--ink);width:420px;max-width:92vw">
-  <h3 style="margin-top:0">關於</h3>
+  <h3 style="margin-top:0;display:flex;align-items:center;gap:8px"><img src="mushroom.png" alt="" style="width:28px;height:28px;border-radius:50%">關於</h3>
   <div class="card" style="display:flex;justify-content:space-between;align-items:center;gap:12px">
     <div><div class="muted">程式版本</div><b id="verNow" style="font-size:20px">–</b></div>
     <button class="btn" id="updBtn" disabled>已是最新版</button>
