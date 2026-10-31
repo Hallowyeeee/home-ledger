@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>家庭記帳</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<p class="muted" style="text-align:center;margin-top:40vh">開啟中…</p>
+<script src="core.js"></script>
+<script>
+// 電腦版 .exe 的入口：打開線上最新版的畫面，所以改程式後不用重新下載 .exe。
+// 連不上網路又沒存過線上版時，改用 .exe 內建的那份。
+const ONLINE_APP = 'https://hallowyeeee.github.io/home-ledger/app.html';
+(async () => {
+  const cfg = Config.get();
+  const hash = cfg ? '#setup=' + Config.encode(cfg) : '';
+  try {
+    const ctrl = new AbortController();
+    setTimeout(() => ctrl.abort(), 4000);
+    await fetch(ONLINE_APP, { mode: 'no-cors', cache: 'no-store', signal: ctrl.signal });
+    location.replace(ONLINE_APP + hash);
+  } catch {
+    location.replace('app.html');
+  }
+})();
+</script>
+</body>
+</html>

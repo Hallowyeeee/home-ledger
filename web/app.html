@@ -506,6 +506,7 @@ function setStatus(s, err) {
 }
 
 async function start() {
+  Config.fromHash();
   if (!Config.get()) return renderSetup($('#setup'));
   await Ledger.init();
   $('#app').classList.remove('hidden');

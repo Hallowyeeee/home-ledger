@@ -217,6 +217,9 @@ const Ledger = {
 // 網路恢復時自動補送
 window.addEventListener('online', () => Ledger.flush());
 
+// 線上版（GitHub Pages）註冊離線快取，沒網路也打得開
+if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+
 // ---------- 第一次設定畫面（手機、電腦共用）----------
 function renderSetup(el) {
   el.innerHTML = `<div class="setup"><div class="card">
