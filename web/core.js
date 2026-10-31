@@ -5,8 +5,8 @@ const PEOPLE = ['濠亭', '子淳'];
 const TYPE_LABEL = { expense: '支出', income: '收入' };
 // 第一次同步之前先用這份（跟 backend/Code.gs 的預設一致）
 const DEFAULT_CATEGORIES = [
-  ['餐飲', 'expense', 20], ['日用品', 'expense', 10], ['交通', 'expense', 5],
-  ['居家帳單', 'expense', 25], ['購物娛樂', 'expense', 10], ['其他', 'expense', 5],
+  ['餐飲', 'expense', 20], ['日用品', 'expense', 10], ['帳單/交通', 'expense', 30],
+  ['小孩用品', 'expense', ''], ['購物娛樂', 'expense', 10], ['其他', 'expense', 5],
   ['薪水', 'income', ''], ['獎金', 'income', ''], ['其他收入', 'income', ''],
 ].map(([name, type, pct], i) => ({ name, type, sort: i + 1, pct }));
 
