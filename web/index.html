@@ -58,6 +58,11 @@
   .pie svg { flex: 0 0 120px; width: 120px; height: 120px; }
   .crow { margin: 9px 0; font-size: 14px; }
   .crow .t { display: flex; justify-content: space-between; gap: 6px; }
+  .crow { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  .crow.open .t span:first-child { font-weight: 600; }
+  .crow .t span:first-child::after { content: ' ›'; color: var(--muted); }
+  .crow.open .t span:first-child::after { content: ' ⌄'; }
+  .catrec { margin: 6px 0 12px; font-size: 14px; }
   .crow i { display: inline-block; width: 9px; height: 9px; border-radius: 3px; margin-right: 6px; }
   .crow .bar { height: 6px; background: var(--line); border-radius: 99px; overflow: hidden; margin-top: 4px; }
   .crow .bar span { display: block; height: 100%; border-radius: 99px; }
@@ -155,7 +160,7 @@ function renderToday() {
 
 // ---------- 看全部 ----------
 const COLORS = ['#1f6f5c', '#e07a5f', '#7b6cd9', '#e9b949', '#c75d8c', '#5fa8a0', '#a0785a', '#8a8f8c'];
-let month = ym(todayStr()), aWho = '', openId = null;
+let month = ym(todayStr()), aWho = '', openId = null, openCat = null;
 const sumOf = l => l.reduce((t, r) => t + Number(r.amount), 0);
 const mine = r => !aWho || r.who === aWho;
 function catColor(name) { const i = Ledger.cats('expense').findIndex(c => c.name === name); return COLORS[(i < 0 ? 7 : i) % COLORS.length]; }
@@ -194,8 +199,11 @@ function renderAll() {
     const budget = showBudget && c.pct !== '' && c.pct != null ? base * Number(c.pct) / 100 : 0;
     const w = budget ? Math.min(100, c.amt / budget * 100) : out ? c.amt / out * 100 : 0;
     const left = budget ? (c.amt > budget ? `<span class="left over">超過 ${money(c.amt - budget)}</span>` : `<span class="left">剩 ${money(budget - c.amt)}</span>`) : '';
-    return `<div class="crow"><div class="t"><span><i style="background:${catColor(c.name)}"></i>${esc(c.name)} ${left}</span><b>${money(c.amt)}</b></div>
-      <div class="bar"><span style="width:${w}%;background:${budget && c.amt > budget ? 'var(--warn)' : catColor(c.name)}"></span></div></div>`;
+    const open = openCat === c.name;
+    const recs = open ? inM.filter(r => r.type === 'expense' && r.category === c.name).sort((a, b) => b.date.localeCompare(a.date) || b.updatedAt - a.updatedAt) : [];
+    return `<div class="crow${open ? ' open' : ''}" data-cat="${esc(c.name)}"><div class="t"><span><i style="background:${catColor(c.name)}"></i>${esc(c.name)} ${left}</span><b>${money(c.amt)}</b></div>
+      <div class="bar"><span style="width:${w}%;background:${budget && c.amt > budget ? 'var(--warn)' : catColor(c.name)}"></span></div></div>`
+      + (open ? (recs.length ? `<ul class="rec catrec">${recs.map(r => recItem(r, true)).join('')}</ul>` : '<p class="muted catrec" style="margin:4px 0 10px;font-size:13px">這個月這類沒有紀錄</p>') : '');
   }).join('');
 
   // 近 6 個月
@@ -225,10 +233,10 @@ function renderRecs() {
       <ul class="rec">${rs.map(recItem).join('')}</ul>`).join('')
     || '<p class="muted" style="text-align:center;margin:24px 0">沒有紀錄</p>';
 }
-function recItem(r) {
+function recItem(r, withDate) {
   const [store, ...rest] = String(r.note).split('｜');
   const inc = r.type === 'income';
-  const head = `<div class="r" data-open="${esc(r.id)}"><span class="n">${esc(r.category)} <span class="muted">${esc(store)}${r.source === 'invoice' && rest.length ? ' 🧾' : ''} · ${esc(r.who)}</span></span>
+  const head = `<div class="r" data-open="${esc(r.id)}"><span class="n">${withDate ? `${Number(r.date.slice(5, 7))}/${Number(r.date.slice(8))}` : esc(r.category)} <span class="muted">${esc(store)}${r.source === 'invoice' && rest.length ? ' 🧾' : ''} · ${esc(r.who)}</span></span>
     <b class="${inc ? 'in' : ''}">${inc ? '+' : ''}${money(r.amount)}</b></div>`;
   if (openId !== r.id) return `<li>${head}</li>`;
   const items = rest.join('｜').split('、').filter(Boolean);
@@ -252,7 +260,9 @@ function recsClick(e) {
   }
   if (t.dataset.edel) { if (confirm('刪除這筆？')) { openId = null; Ledger.remove(t.dataset.edel); toast('已刪除'); } return; }
   const h = t.closest('[data-open]');
-  if (h) { openId = openId === h.dataset.open ? null : h.dataset.open; renderRecs(); }
+  if (h) { openId = openId === h.dataset.open ? null : h.dataset.open; e.currentTarget.id === 'catRows' ? renderAll() : renderRecs(); return; }
+  const c = t.closest('.crow');
+  if (c && e.currentTarget.id === 'catRows') { openCat = openCat === c.dataset.cat ? null : c.dataset.cat; openId = null; renderAll(); }
 }
 function showView(v) {
   $$('#view button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
@@ -305,6 +315,7 @@ async function start() {
   $('#mNext').onclick = () => { month = shiftMonth(month, 1); renderAll(); };
   $('#aFind').oninput = renderRecs;
   $('#recs').onclick = recsClick;
+  $('#catRows').onclick = recsClick;
   // 左右滑換月份
   let sx = 0, sy = 0;
   $('#all').addEventListener('touchstart', e => { sx = e.touches[0].clientX; sy = e.touches[0].clientY; }, { passive: true });
